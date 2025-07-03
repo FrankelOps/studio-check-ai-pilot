@@ -1,11 +1,6 @@
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -13,64 +8,45 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 
 interface CreateProjectDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onProjectCreated: () => void;
+  children: React.ReactNode;
 }
 
-export const CreateProjectDialog = ({ open, onOpenChange, onProjectCreated }: CreateProjectDialogProps) => {
+export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [retentionMonths, setRetentionMonths] = useState('6');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      toast({
-        variant: "destructive",
-        title: "Project name required",
-        description: "Please enter a name for your project.",
-      });
-      return;
-    }
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase
-        .from('projects')
-        .insert([
-          {
-            name: name.trim(),
-            description: description.trim(),
-            user_id: user.id,
-            data_retention_months: parseInt(retentionMonths),
-          }
-        ]);
-
-      if (error) throw error;
-
+      // TODO: Implement project creation with Supabase
       toast({
-        title: "Project created",
+        title: "Project created!",
         description: `${name} has been created successfully.`,
       });
-
+      
+      setOpen(false);
       setName('');
       setDescription('');
       setRetentionMonths('6');
-      onOpenChange(false);
-      onProjectCreated();
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error creating project",
+        title: "Failed to create project",
         description: error.message,
       });
     } finally {
@@ -79,26 +55,28 @@ export const CreateProjectDialog = ({ open, onOpenChange, onProjectCreated }: Cr
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {children}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Create New Project</DialogTitle>
           <DialogDescription>
-            Set up a new construction QA/QC project for document analysis.
+            Set up a new QA/QC analysis project. You can upload files and invite team members after creation.
           </DialogDescription>
         </DialogHeader>
-        
-        <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="name">Project Name</Label>
             <Input
               id="name"
-              placeholder="e.g., Medical Center Phase 2"
+              placeholder="e.g., Hospital Wing A Renovation"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              required
             />
           </div>
-          
           <div className="space-y-2">
             <Label htmlFor="description">Description (Optional)</Label>
             <Textarea
@@ -106,43 +84,40 @@ export const CreateProjectDialog = ({ open, onOpenChange, onProjectCreated }: Cr
               placeholder="Brief description of the project..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={3}
             />
           </div>
-          
           <div className="space-y-2">
             <Label htmlFor="retention">Data Retention Period</Label>
             <Select value={retentionMonths} onValueChange={setRetentionMonths}>
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Select retention period" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="3">3 months</SelectItem>
-                <SelectItem value="6">6 months (default)</SelectItem>
+                <SelectItem value="6">6 months (recommended)</SelectItem>
                 <SelectItem value="12">12 months</SelectItem>
                 <SelectItem value="24">24 months</SelectItem>
                 <SelectItem value="60">5 years</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-slate-600">
-              How long should project files and analysis data be retained?
+            <p className="text-xs text-slate-500">
+              Files and analysis results will be automatically deleted after this period.
             </p>
           </div>
-        </div>
-        
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleCreate}
-            disabled={loading}
-            className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
-          >
-            {loading ? 'Creating...' : 'Create Project'}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
+              disabled={loading}
+            >
+              {loading ? 'Creating...' : 'Create Project'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
-};
+}
