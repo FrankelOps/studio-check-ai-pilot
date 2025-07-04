@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
+
 
 interface CreateProjectDialogProps {
   children: React.ReactNode;
@@ -26,7 +26,7 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
   const [description, setDescription] = useState('');
   const [retentionMonths, setRetentionMonths] = useState('6');
   const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,21 +34,14 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
 
     try {
       // TODO: Implement project creation with Supabase
-      toast({
-        title: "Project created!",
-        description: `${name} has been created successfully.`,
-      });
+      console.log('Project created:', name);
       
       setOpen(false);
       setName('');
       setDescription('');
       setRetentionMonths('6');
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to create project",
-        description: error.message,
-      });
+      console.error('Failed to create project:', error);
     } finally {
       setLoading(false);
     }
