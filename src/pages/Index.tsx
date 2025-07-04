@@ -1,7 +1,5 @@
 
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, Shield, Zap, Users, FileText, AlertTriangle } from 'lucide-react';
@@ -9,15 +7,6 @@ import { CheckCircle, Shield, Zap, Users, FileText, AlertTriangle } from 'lucide
 const Index = () => {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate('/dashboard');
-      }
-    };
-    checkUser();
-  }, [navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
@@ -31,14 +20,11 @@ const Index = () => {
             <span className="text-xl font-bold text-slate-900">StudioCheck</span>
           </div>
           <div className="flex space-x-4">
-            <Button variant="ghost" onClick={() => navigate('/login')}>
-              Sign In
-            </Button>
             <Button 
               className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
-              onClick={() => navigate('/signup')}
+              onClick={() => navigate('/dashboard')}
             >
-              Get Started
+              Try StudioCheck Free
             </Button>
           </div>
         </div>
@@ -64,7 +50,7 @@ const Index = () => {
             <Button 
               size="lg" 
               className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600 px-8"
-              onClick={() => navigate('/signup')}
+              onClick={() => navigate('/dashboard')}
             >
               Start Free Analysis
             </Button>

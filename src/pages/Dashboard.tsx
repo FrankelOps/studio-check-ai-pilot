@@ -1,64 +1,10 @@
 
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Upload, FileText, Users, Bell, LogOut, Plus } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
-import { NotificationCenter } from '@/components/NotificationCenter';
+import { CheckCircle, Upload, FileText, Users, Bell, Plus } from 'lucide-react';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
-import type { User } from '@supabase/supabase-js';
 
 const Dashboard = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        navigate('/login');
-        return;
-      }
-      setUser(user);
-      setLoading(false);
-    };
-
-    getUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        navigate('/login');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast({
-      title: "Signed out successfully",
-      description: "You have been logged out of StudioCheck.",
-    });
-    navigate('/');
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
@@ -76,13 +22,9 @@ const Dashboard = () => {
             </div>
             
             <div className="flex items-center space-x-4">
-              <NotificationCenter />
-              <div className="text-sm text-slate-600">
-                {user?.email}
-              </div>
-              <Button variant="outline" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
+              <Button variant="outline" size="sm">
+                <Bell className="h-4 w-4 mr-2" />
+                Notifications
               </Button>
             </div>
           </div>
@@ -94,7 +36,7 @@ const Dashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Welcome back, {user?.user_metadata?.first_name || 'User'}!
+            Welcome to StudioCheck!
           </h1>
           <p className="text-lg text-slate-600">
             Ready to analyze your construction documents with AI-powered QA/QC?
