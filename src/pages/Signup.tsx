@@ -1,13 +1,13 @@
 
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Signup = () => {
@@ -74,7 +74,7 @@ const Signup = () => {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center space-x-2">
             <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-orange-500 rounded-lg flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 text-white" />
+              <ArrowDown className="h-6 w-6 text-white" />
             </div>
             <span className="text-2xl font-bold text-slate-900">StudioCheck</span>
           </Link>
@@ -159,7 +159,7 @@ const Signup = () => {
             {/* Legal Disclaimer */}
             <div className="mt-6 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-start space-x-2">
-                <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <ArrowDown className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-800">
                   StudioCheck provides AI-assisted analysis for informational purposes only. 
                   All findings must be verified by licensed professionals. We do not replace 

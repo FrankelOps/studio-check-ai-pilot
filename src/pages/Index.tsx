@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Shield, Zap, Users, FileText, AlertTriangle } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -15,7 +15,7 @@ const Index = () => {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-br from-red-600 to-orange-500 rounded-lg flex items-center justify-center">
-              <CheckCircle className="h-5 w-5 text-white" />
+              <ArrowDown className="h-5 w-5 text-white" />
             </div>
             <span className="text-xl font-bold text-slate-900">StudioCheck</span>
           </div>
@@ -77,7 +77,7 @@ const Index = () => {
             <Card className="border-slate-200 hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
-                  <Zap className="h-6 w-6 text-red-600" />
+                  <ArrowDown className="h-6 w-6 text-red-600" />
                 </div>
                 <CardTitle>Rapid Analysis</CardTitle>
                 <CardDescription>
@@ -89,7 +89,7 @@ const Index = () => {
             <Card className="border-slate-200 hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                  <Shield className="h-6 w-6 text-orange-600" />
+                  <ArrowDown className="h-6 w-6 text-orange-600" />
                 </div>
                 <CardTitle>Risk Detection</CardTitle>
                 <CardDescription>
@@ -101,7 +101,7 @@ const Index = () => {
             <Card className="border-slate-200 hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
-                  <Users className="h-6 w-6 text-red-600" />
+                  <ArrowDown className="h-6 w-6 text-red-600" />
                 </div>
                 <CardTitle>Team Collaboration</CardTitle>
                 <CardDescription>
@@ -117,7 +117,7 @@ const Index = () => {
       <section className="py-8 px-4 bg-amber-50 border-t border-amber-200">
         <div className="container mx-auto max-w-4xl">
           <div className="flex items-start space-x-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <ArrowDown className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-amber-800">
               <p className="font-medium mb-1">Important Disclaimer</p>
               <p>
@@ -137,7 +137,7 @@ const Index = () => {
             <div>
               <div className="flex items-center space-x-2 mb-4">
                 <div className="w-6 h-6 bg-gradient-to-br from-red-600 to-orange-500 rounded">
-                  <CheckCircle className="h-4 w-4 text-white m-1" />
+                  <ArrowDown className="h-4 w-4 text-white m-1" />
                 </div>
                 <span className="text-white font-semibold">StudioCheck</span>
               </div>

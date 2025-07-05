@@ -1,7 +1,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Upload, FileText, Users, Bell, Plus } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
 
 const Dashboard = () => {
@@ -15,7 +15,7 @@ const Dashboard = () => {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-red-600 to-orange-500 rounded-lg flex items-center justify-center">
-                  <CheckCircle className="h-5 w-5 text-white" />
+                  <ArrowDown className="h-5 w-5 text-white" />
                 </div>
                 <span className="text-xl font-bold text-slate-900">StudioCheck</span>
               </div>
@@ -23,7 +23,7 @@ const Dashboard = () => {
             
             <div className="flex items-center space-x-4">
               <Button variant="outline" size="sm">
-                <Bell className="h-4 w-4 mr-2" />
+                <ArrowDown className="h-4 w-4 mr-2" />
                 Notifications
               </Button>
             </div>
@@ -48,7 +48,7 @@ const Dashboard = () => {
           <CreateProjectDialog>
             <Card className="hover:shadow-lg transition-shadow cursor-pointer border-dashed border-2">
               <CardContent className="flex flex-col items-center justify-center p-6 text-center">
-                <Plus className="h-12 w-12 text-red-600 mb-4" />
+                <ArrowDown className="h-12 w-12 text-red-600 mb-4" />
                 <h3 className="font-semibold text-slate-900 mb-2">New Project</h3>
                 <p className="text-sm text-slate-600">Start a fresh QA/QC analysis</p>
               </CardContent>
@@ -57,7 +57,7 @@ const Dashboard = () => {
 
           <Card className="hover:shadow-lg transition-shadow">
             <CardContent className="flex flex-col items-center justify-center p-6 text-center">
-              <Upload className="h-12 w-12 text-orange-600 mb-4" />
+              <ArrowDown className="h-12 w-12 text-orange-600 mb-4" />
               <h3 className="font-semibold text-slate-900 mb-2">Upload Files</h3>
               <p className="text-sm text-slate-600">Add drawings & specifications</p>
             </CardContent>
@@ -65,7 +65,7 @@ const Dashboard = () => {
 
           <Card className="hover:shadow-lg transition-shadow">
             <CardContent className="flex flex-col items-center justify-center p-6 text-center">
-              <FileText className="h-12 w-12 text-red-600 mb-4" />
+              <ArrowDown className="h-12 w-12 text-red-600 mb-4" />
               <h3 className="font-semibold text-slate-900 mb-2">Recent Reports</h3>
               <p className="text-sm text-slate-600">View analysis results</p>
             </CardContent>
@@ -73,7 +73,7 @@ const Dashboard = () => {
 
           <Card className="hover:shadow-lg transition-shadow">
             <CardContent className="flex flex-col items-center justify-center p-6 text-center">
-              <Users className="h-12 w-12 text-orange-600 mb-4" />
+              <ArrowDown className="h-12 w-12 text-orange-600 mb-4" />
               <h3 className="font-semibold text-slate-900 mb-2">Team Access</h3>
               <p className="text-sm text-slate-600">Collaborate with your team</p>
             </CardContent>
@@ -89,7 +89,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-center py-8 text-slate-500">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <ArrowDown className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No projects yet. Create your first project to get started!</p>
               </div>
             </CardContent>
@@ -102,7 +102,7 @@ const Dashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="text-center py-8 text-slate-500">
-                <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <ArrowDown className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No active analyses. Upload files to begin processing.</p>
               </div>
             </CardContent>
