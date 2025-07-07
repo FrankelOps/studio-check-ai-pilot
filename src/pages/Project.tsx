@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDown } from 'lucide-react';
+import { ArrowDown, MapPin, FileText, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FileUpload } from '@/components/FileUpload';
@@ -283,25 +283,53 @@ const Project = () => {
                         {analysis.analysis_data && Array.isArray(analysis.analysis_data) && analysis.analysis_data.length > 0 ? (
                           <div className="space-y-3">
                             {analysis.analysis_data.map((finding: any, index: number) => (
-                              <div key={index} className="bg-slate-50 rounded-lg p-3">
-                                <div className="flex items-start justify-between mb-2">
-                                  <Badge variant={getSeverityColor(finding.severity) as any}>
-                                    {finding.category}
-                                  </Badge>
-                                  {finding.severity && (
-                                    <Badge variant="outline" className="text-xs">
-                                      {finding.severity} Risk
+                              <div key={index} className="bg-slate-50 rounded-lg p-4 border-l-4 border-l-red-500">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant={getSeverityColor(finding.severity) as any}>
+                                      {finding.category}
+                                    </Badge>
+                                    {finding.severity && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {finding.severity} Risk
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  {finding.requires_coordination && (
+                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                                      <AlertTriangle className="h-3 w-3 mr-1" />
+                                      Coordination Required
                                     </Badge>
                                   )}
                                 </div>
-                                <p className="text-sm text-slate-700 mb-1">
+                                
+                                <p className="text-sm text-slate-700 mb-3 leading-relaxed">
                                   {finding.description}
                                 </p>
-                                {finding.location_reference && (
-                                  <p className="text-xs text-slate-500">
-                                    Location: {finding.location_reference}
-                                  </p>
-                                )}
+                                
+                                <div className="space-y-2">
+                                  {finding.location_reference && (
+                                    <div className="flex items-center text-xs text-slate-600">
+                                      <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                                      <span className="font-medium">Location:</span>
+                                      <span className="ml-1">{finding.location_reference}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {finding.cross_references && finding.cross_references.length > 0 && (
+                                    <div className="flex items-start text-xs text-blue-600">
+                                      <FileText className="h-3 w-3 mr-1 flex-shrink-0 mt-0.5" />
+                                      <span className="font-medium">References:</span>
+                                      <div className="ml-2 flex flex-wrap gap-1">
+                                        {finding.cross_references.map((ref: string, refIdx: number) => (
+                                          <Badge key={refIdx} variant="outline" className="text-xs px-1 py-0">
+                                            {ref}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
