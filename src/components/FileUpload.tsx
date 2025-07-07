@@ -32,12 +32,12 @@ export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
       return;
     }
 
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    // Validate file size (max 100MB)
+    if (file.size > 100 * 1024 * 1024) {
       toast({
         variant: "destructive",
         title: "File too large",
-        description: "Please upload files smaller than 10MB.",
+        description: "Please upload files smaller than 100MB.",
       });
       return;
     }
@@ -136,7 +136,7 @@ export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
                 Drag & drop PDF files or construction drawings, or click to browse
               </p>
               <p className="text-xs text-slate-500">
-                Supports PDF, PNG, JPG files (max 10MB)
+                Supports PDF, PNG, JPG files (max 100MB)
               </p>
               <Button variant="outline" className="mt-4">
                 Choose Files
