@@ -1,10 +1,46 @@
 
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowDown } from 'lucide-react';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
+import { supabase } from '@/integrations/supabase/client';
+
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+}
 
 const Dashboard = () => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchProjects = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setProjects(data || []);
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white">
@@ -82,16 +118,39 @@ const Dashboard = () => {
 
         {/* Recent Activity */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card>
+            <Card>
             <CardHeader>
               <CardTitle>Recent Projects</CardTitle>
               <CardDescription>Your latest QA/QC analyses</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-slate-500">
-                <ArrowDown className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>No projects yet. Create your first project to get started!</p>
-              </div>
+              {loading ? (
+                <div className="text-center py-8 text-slate-500">
+                  <ArrowDown className="h-12 w-12 mx-auto mb-4 animate-spin" />
+                  <p>Loading projects...</p>
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <ArrowDown className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No projects yet. Create your first project to get started!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {projects.slice(0, 5).map((project) => (
+                    <Link key={project.id} to={`/project/${project.id}`}>
+                      <div className="p-3 border rounded-lg hover:bg-slate-50 transition-colors">
+                        <h3 className="font-medium text-slate-900">{project.name}</h3>
+                        {project.description && (
+                          <p className="text-sm text-slate-600 mt-1">{project.description}</p>
+                        )}
+                        <p className="text-xs text-slate-500 mt-2">
+                          Created {new Date(project.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

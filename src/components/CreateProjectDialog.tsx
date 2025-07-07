@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 
 interface CreateProjectDialogProps {
@@ -26,6 +28,7 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
   const [description, setDescription] = useState('');
   const [retentionMonths, setRetentionMonths] = useState('6');
   const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
   
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,15 +36,40 @@ export function CreateProjectDialog({ children }: CreateProjectDialogProps) {
     setLoading(true);
 
     try {
-      // TODO: Implement project creation with Supabase
-      console.log('Project created:', name);
-      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('projects')
+        .insert({
+          name,
+          description: description || null,
+          retention_months: parseInt(retentionMonths),
+          user_id: user.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Project created!",
+        description: `${name} has been created successfully.`,
+      });
+
       setOpen(false);
       setName('');
       setDescription('');
       setRetentionMonths('6');
+      
+      // Refresh the page to show new project
+      window.location.reload();
     } catch (error: any) {
-      console.error('Failed to create project:', error);
+      toast({
+        variant: "destructive",
+        title: "Failed to create project",
+        description: error.message,
+      });
     } finally {
       setLoading(false);
     }
