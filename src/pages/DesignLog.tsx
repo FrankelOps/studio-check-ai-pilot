@@ -14,6 +14,7 @@ import { DesignLogChat } from '@/components/DesignLogChat';
 import { OwnerPortal } from '@/components/OwnerPortal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ActionItemsManager } from '@/components/ActionItemsManager';
+import { EmbeddingManager } from '@/components/EmbeddingManager';
 
 interface Project {
   id: string;
@@ -274,6 +275,9 @@ const DesignLog = () => {
           </TabsList>
 
           <TabsContent value="designlog" className="space-y-8">
+            {/* Embedding Manager - Phase 1 Implementation */}
+            <EmbeddingManager projectId={projectId!} />
+            
             {/* Decision Q&A Chat */}
             <DesignLogChat projectId={projectId!} />
 

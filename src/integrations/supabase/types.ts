@@ -486,6 +486,27 @@ export type Database = {
         Args: { "": string } | { "": unknown } | { "": unknown }
         Returns: string
       }
+      search_transcript_embeddings: {
+        Args: {
+          query_embedding: string
+          match_threshold?: number
+          match_count?: number
+          project_id?: string
+        }
+        Returns: {
+          id: string
+          design_log_id: string
+          content_text: string
+          content_type: string
+          similarity: number
+          type: string
+          date: string
+          meeting_event: string
+          summary: string
+          rationale: string
+          created_at: string
+        }[]
+      }
       sparsevec_out: {
         Args: { "": unknown }
         Returns: unknown
