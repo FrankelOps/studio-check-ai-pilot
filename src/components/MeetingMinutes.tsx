@@ -40,11 +40,15 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
 
   const fetchData = async () => {
     try {
+      console.log('Fetching meeting minutes data...');
+      
       // Check if meeting_minutes table exists by trying a simple query
       const { data: minutesData, error: minutesError } = await (supabase as any)
         .from('meeting_minutes')
         .select('id')
         .limit(1);
+
+      console.log('Initial query result:', { minutesData, minutesError });
 
       // If we get a specific error about the table not existing, show setup message
       if (minutesError && (
@@ -52,6 +56,7 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
         minutesError.message?.includes('relationship between') ||
         minutesError.code === 'PGRST106'
       )) {
+        console.log('Table appears to not exist, showing setup message');
         setMeetingMinutes([]);
         setDesignLogEntries([]);
         setLoading(false);
