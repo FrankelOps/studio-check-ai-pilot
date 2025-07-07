@@ -180,6 +180,14 @@ const Project = () => {
               <span className="text-slate-400">/</span>
               <span className="text-slate-700">{project.name}</span>
             </div>
+            <div className="flex items-center space-x-4">
+              <Link to={`/project/${projectId}/designlog`}>
+                <Button variant="outline" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  DesignLog
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

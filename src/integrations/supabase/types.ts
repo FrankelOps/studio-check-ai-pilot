@@ -51,6 +51,66 @@ export type Database = {
           },
         ]
       }
+      design_logs: {
+        Row: {
+          created_at: string
+          date: string | null
+          file_id: string | null
+          id: string
+          meeting_event: string | null
+          project_id: string
+          rationale: string | null
+          status: string | null
+          summary: string
+          tags: string[] | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string | null
+          file_id?: string | null
+          id?: string
+          meeting_event?: string | null
+          project_id: string
+          rationale?: string | null
+          status?: string | null
+          summary: string
+          tags?: string[] | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string | null
+          file_id?: string | null
+          id?: string
+          meeting_event?: string | null
+          project_id?: string
+          rationale?: string | null
+          status?: string | null
+          summary?: string
+          tags?: string[] | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "design_logs_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "uploaded_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "design_logs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
