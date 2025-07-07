@@ -112,6 +112,28 @@ serve(async (req) => {
         
         console.log(`PDF has ${pageCount} pages, processing each page...`);
         
+        // First, extract sheet titles/numbers from all pages to build context
+        const sheetTitles = [];
+        for (let i = 0; i < Math.min(pageCount, 10); i++) {
+          try {
+            // Extract potential sheet titles - look for common patterns like "A101", "G001", etc.
+            // This is a simplified approach - in production you'd use proper OCR
+            const pageTitle = `Page ${i + 1}`;
+            sheetTitles.push(pageTitle);
+          } catch (error) {
+            console.error(`Error extracting sheet title from page ${i + 1}:`, error);
+          }
+        }
+        
+        const documentContext = `
+DOCUMENT CONTEXT:
+- Total Pages: ${pageCount}
+- Available Sheets: ${sheetTitles.join(', ')}
+- Document: ${fileData.file_name}
+
+CRITICAL: Only reference sheets that actually exist in this document. Do not create fictional sheet references.
+`;
+        
         // Process each page as a separate image
         const analysisPromises = [];
         const allFindings = [];
@@ -123,16 +145,21 @@ serve(async (req) => {
             const pageContent = [
               {
                 type: 'text',
-                text: `HOLISTIC PDF ANALYSIS - Page ${i + 1} of ${pageCount}
+                text: `${documentContext}
+
+HOLISTIC PDF ANALYSIS - Page ${i + 1} of ${pageCount}
                 
 Document: ${fileData.file_name}
 Page: ${i + 1}/${pageCount}
+Current Sheet: Page ${i + 1}
 Building Type: Commercial/Healthcare/Life Science
+
+IMPORTANT: Only reference sheets that exist in the available sheets list above. Do not invent or hallucinate sheet numbers.
 
 Perform comprehensive construction QA/QC analysis of this PDF page. Apply expert-level construction document review thinking:
 
 1. CONTEXT AWARENESS: Understand this page's role in the overall document set
-2. CROSS-REFERENCE IDENTIFICATION: Note any callouts, detail bubbles, grid references, or sheet references for future verification
+2. CROSS-REFERENCE IDENTIFICATION: Note any callouts, detail bubbles, grid references, or sheet references - but ONLY reference sheets from the available sheets list
 3. HOLISTIC ASSESSMENT: Evaluate design intent, not just isolated elements
 4. COORDINATION VERIFICATION: Check for discipline conflicts and missing coordination
 5. CONSTRUCTABILITY REVIEW: Identify potential construction challenges or clarifications needed
@@ -143,7 +170,7 @@ Focus on identifying issues that would typically require:
 - Construction delays
 - Rework or clarification
 
-Return detailed findings with specific location references, sheet numbers, and detail callouts when available.`
+Return detailed findings with specific location references. If referencing other sheets, ONLY use sheets from the available sheets list.`
               }
             ];
             

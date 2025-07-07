@@ -7,6 +7,7 @@ import { ArrowDown, MapPin, FileText, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FileUpload } from '@/components/FileUpload';
+import { AnalysisChat } from '@/components/AnalysisChat';
 
 interface Project {
   id: string;
@@ -192,7 +193,7 @@ const Project = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           {/* File Upload Section */}
           <div className="space-y-6">
             <Card>
@@ -397,6 +398,11 @@ const Project = () => {
                 )}
               </CardContent>
             </Card>
+          </div>
+
+          {/* AI Chat Section */}
+          <div>
+            <AnalysisChat projectId={projectId!} />
           </div>
         </div>
       </main>
