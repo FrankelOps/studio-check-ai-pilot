@@ -138,6 +138,9 @@ export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
               <p className="text-xs text-slate-500">
                 Supports PDF, PNG, JPG files (max 100MB)
               </p>
+              <p className="text-xs text-amber-600 mt-1">
+                💡 For best analysis results, upload construction drawings as JPG/PNG images
+              </p>
               <Button variant="outline" className="mt-4">
                 Choose Files
               </Button>

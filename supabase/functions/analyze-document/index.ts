@@ -76,13 +76,75 @@ serve(async (req) => {
       throw new Error('Could not download file');
     }
 
-    // Convert file to base64 for OpenAI
-    const arrayBuffer = await fileBlob.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    if (!openAIApiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+
+    // Process the file based on its type
+    let content;
+    let isPDF = fileData.mime_type === 'application/pdf';
+    
+    if (isPDF) {
+      // For now, PDFs need to be converted to images for analysis
+      // Return a helpful message for PDF files
+      console.log('PDF file detected - currently not supported');
+      
+      // Store a helpful message in the analysis results
+      const analysisData = [{
+        category: "Other Red Flag",
+        description: "PDF analysis is currently limited. For best results, please convert your PDF pages to JPG or PNG images and upload them separately. This allows our AI to visually analyze construction drawings, plans, and specifications.",
+        location_reference: fileData.file_name,
+        severity: "Medium"
+      }];
+
+      // Store the result
+      const { data: analysisResult, error: analysisError } = await supabase
+        .from('analysis_results')
+        .insert({
+          project_id: projectId,
+          file_id: fileId,
+          analysis_data: analysisData,
+          status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (analysisError) {
+        console.error('Error storing analysis:', analysisError);
+        throw new Error('Failed to store analysis results');
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        analysisId: analysisResult.id,
+        findings: analysisData 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } else {
+      // For images, use vision model
+      console.log('Processing image file...');
+      const arrayBuffer = await fileBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      
+      content = [
+        {
+          type: 'text',
+          text: `Please analyze this construction document (${fileData.file_name}) for QA/QC issues. The building type is commercial/healthcare. Return findings as JSON array.`
+        },
+        {
+          type: 'image_url',
+          image_url: {
+            url: `data:${fileData.mime_type};base64,${base64}`,
+            detail: 'high'
+          }
+        }
+      ];
+    }
 
     console.log('Sending to OpenAI for analysis...');
 
-    // Call OpenAI API with vision model for document analysis
+    // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -98,19 +160,7 @@ serve(async (req) => {
           },
           {
             role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `Please analyze this construction document (${fileData.file_name}) for QA/QC issues. The building type is commercial/healthcare. Return findings as JSON array.`
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${fileData.mime_type};base64,${base64}`,
-                  detail: 'high'
-                }
-              }
-            ]
+            content: content
           }
         ],
         max_tokens: 2000,
