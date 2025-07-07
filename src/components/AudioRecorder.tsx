@@ -2,20 +2,27 @@ import { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Mic, Square, Play, Pause, Trash2, Upload } from 'lucide-react';
+import { Mic, Square, Play, Pause, Trash2, Upload, FileText, Brain } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import TranscriptEditor from './TranscriptEditor';
 
 interface AudioRecorderProps {
   onAudioRecorded: (audioBlob: Blob, duration: number) => void;
+  onTranscriptGenerated?: (transcriptData: any) => void;
+  projectId?: string;
   disabled?: boolean;
 }
 
-export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps) {
+export function AudioRecorder({ onAudioRecorded, onTranscriptGenerated, projectId, disabled }: AudioRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [duration, setDuration] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptData, setTranscriptData] = useState<any>(null);
+  const [showTranscriptEditor, setShowTranscriptEditor] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -128,6 +135,7 @@ export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps)
     setRecordedBlob(null);
     setDuration(0);
     setIsPlaying(false);
+    setTranscriptData(null);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -139,6 +147,71 @@ export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps)
       onAudioRecorded(recordedBlob, duration);
       clearRecording();
     }
+  };
+
+  const handleTranscribeWithAI = async () => {
+    if (!recordedBlob) return;
+
+    setIsTranscribing(true);
+    
+    try {
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1]; // Remove data:audio/webm;base64, prefix
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+      
+      reader.readAsDataURL(recordedBlob);
+      const base64Audio = await base64Promise;
+
+      // Call enhanced transcription service
+      const { data, error } = await supabase.functions.invoke('transcribe-audio', {
+        body: {
+          audio: base64Audio,
+          mimeType: recordedBlob.type,
+          projectId: projectId
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setTranscriptData(data);
+        setShowTranscriptEditor(true);
+        onTranscriptGenerated?.(data);
+        
+        toast({
+          title: "Transcription completed!",
+          description: `Enhanced transcription with ${data.speakers?.length || 0} speakers identified.`,
+        });
+      } else {
+        throw new Error(data.error || 'Transcription failed');
+      }
+
+    } catch (error: any) {
+      console.error('Transcription error:', error);
+      toast({
+        variant: "destructive",
+        title: "Transcription failed",
+        description: error.message || "Unable to transcribe audio. Please try again.",
+      });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleSaveTranscript = (editedData: any) => {
+    setTranscriptData(editedData);
+    onTranscriptGenerated?.(editedData);
+    toast({
+      title: "Transcript saved",
+      description: "Enhanced transcript has been saved successfully.",
+    });
   };
 
   const formatTime = (seconds: number) => {
@@ -231,14 +304,37 @@ export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps)
                 </Button>
               </div>
               
-              <Button
-                onClick={handleUpload}
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                disabled={disabled}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Recording
-              </Button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full">
+                <Button
+                  onClick={handleTranscribeWithAI}
+                  disabled={disabled || isTranscribing}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  {isTranscribing ? 'Transcribing...' : 'Enhanced Transcription'}
+                </Button>
+                
+                <Button
+                  onClick={handleUpload}
+                  variant="outline"
+                  disabled={disabled}
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Only
+                </Button>
+              </div>
+
+              {transcriptData && (
+                <Button
+                  onClick={() => setShowTranscriptEditor(true)}
+                  variant="outline"
+                  className="w-full"
+                  disabled={disabled}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  View Enhanced Transcript
+                </Button>
+              )}
             </div>
           )}
 
@@ -253,8 +349,30 @@ export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps)
               </div>
             </div>
           )}
+
+          {/* Transcription Status */}
+          {isTranscribing && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-center space-x-2">
+                <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
+                <span className="text-sm text-slate-600">
+                  Processing with AssemblyAI & GPT-4o...
+                </span>
+              </div>
+              <Progress value={undefined} className="w-full" />
+            </div>
+          )}
         </div>
       </CardContent>
+      
+      {/* Transcript Editor Modal */}
+      {showTranscriptEditor && transcriptData && (
+        <TranscriptEditor
+          transcriptData={transcriptData}
+          onSave={handleSaveTranscript}
+          onClose={() => setShowTranscriptEditor(false)}
+        />
+      )}
     </Card>
   );
 }
