@@ -107,7 +107,6 @@ serve(async (req) => {
         format_text: true,
         dual_channel: false,
         webhook_url: null,
-        auto_chapters: true, // Automatically detect chapters/sections
         summarization: true, // Enable summarization
         summary_model: 'informative',
         summary_type: 'bullets'
