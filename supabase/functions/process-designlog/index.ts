@@ -60,21 +60,26 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: `You are an AI assistant trained for architecture and construction design decision tracking. Your task is to extract and summarize design decisions, owner requirements, and open questions from project meetings, notes, or documents.
+            content: `You are an AI assistant trained for architecture and construction design decision tracking. Your task is to extract and summarize design decisions, owner requirements, open questions, and action items from project meetings, notes, or documents.
 
 GOAL: Identify and log:
 - **Owner Requirement:** Any owner-stated preference, request, or constraint.
 - **Design Decision:** Any choice made by the design team, including rationale if provided.
 - **Open Question:** Any unresolved issue, pending item, or decision requiring follow-up.
+- **Action Item:** Any task, follow-up, or deliverable assigned to someone with a deadline.
 
 RULES:
 - For each item, provide:
-  • Type: (Owner Requirement / Design Decision / Open Question)
+  • Type: (Owner Requirement / Design Decision / Open Question / Action Item)
   • Date: (if provided in source, format as YYYY-MM-DD)
   • Meeting/Event: (if provided in source)
-  • Summary: Concise statement of decision/requirement/question.
+  • Summary: Concise statement of decision/requirement/question/task.
   • Rationale/Context: Why this was decided or requested, if known.
   • Tags: Relevant keywords for categorization (e.g., "materials", "lighting", "budget", "schedule")
+  • For Action Items only:
+    - assigned_to: Name of person responsible (if mentioned)
+    - due_date: Deadline if specified (format as YYYY-MM-DD)
+    - priority: low/medium/high/urgent (infer from context)
 - Only include relevant items. Skip generic discussion not tied to a decision or requirement.
 - Format output as valid JSON array.
 
@@ -87,12 +92,23 @@ OUTPUT FORMAT:
     "summary": "Owner requested natural wood finish on lobby ceiling.",
     "rationale": "To create a warmer, inviting aesthetic.",
     "tags": ["materials", "lobby", "aesthetics"]
+  },
+  {
+    "type": "Action Item",
+    "date": "2025-04-10",
+    "meeting_event": "Design Review #2",
+    "summary": "Provide wood finish samples and cost estimates for lobby ceiling.",
+    "rationale": "Owner needs to see options before final selection.",
+    "tags": ["materials", "lobby", "samples"],
+    "assigned_to": "Sarah (architect)",
+    "due_date": "2025-04-17",
+    "priority": "high"
   }
 ]`
           },
           {
             role: 'user',
-            content: `Extract design decisions, owner requirements, and open questions from this content:\n\n${text}`
+            content: `Extract design decisions, owner requirements, open questions, and action items from this content:\n\n${text}`
           }
         ],
         temperature: 0.3
@@ -126,7 +142,7 @@ OUTPUT FORMAT:
       }
 
       // Validate type
-      const validTypes = ['Owner Requirement', 'Design Decision', 'Open Question'];
+      const validTypes = ['Owner Requirement', 'Design Decision', 'Open Question', 'Action Item'];
       if (!validTypes.includes(entry.type)) {
         console.warn('Invalid type, skipping entry:', entry);
         continue;
@@ -142,31 +158,66 @@ OUTPUT FORMAT:
         }
       }
 
-      // Insert into database
-      const { data: savedEntry, error: insertError } = await supabaseClient
-        .from('design_logs')
-        .insert({
-          project_id: projectId,
-          file_id: fileId,
-          type: entry.type,
-          date: parsedDate,
-          meeting_event: entry.meeting_event || null,
-          summary: entry.summary,
-          rationale: entry.rationale || null,
-          tags: entry.tags || []
-        })
-        .select()
-        .single();
+      // Insert into database - separate handling for Action Items
+      if (entry.type === 'Action Item') {
+        // Parse due date if provided
+        let parsedDueDate = null;
+        if (entry.due_date) {
+          try {
+            parsedDueDate = new Date(entry.due_date).toISOString().split('T')[0];
+          } catch (dateError) {
+            console.warn('Invalid due date format:', entry.due_date);
+          }
+        }
 
-      if (insertError) {
-        console.error('Failed to save entry:', insertError);
-        continue;
+        // Insert action item
+        const { data: actionItem, error: actionError } = await supabaseClient
+          .from('action_items')
+          .insert({
+            project_id: projectId,
+            decision_id: null, // Will link to design log entry if needed
+            description: entry.summary,
+            assigned_to_name: entry.assigned_to || null,
+            due_date: parsedDueDate,
+            priority: entry.priority || 'medium',
+            status: 'open'
+          })
+          .select()
+          .single();
+
+        if (actionError) {
+          console.error('Failed to save action item:', actionError);
+          continue;
+        }
+
+        savedEntries.push({ ...actionItem, type: 'Action Item' });
+      } else {
+        // Insert design log entry
+        const { data: savedEntry, error: insertError } = await supabaseClient
+          .from('design_logs')
+          .insert({
+            project_id: projectId,
+            file_id: fileId,
+            type: entry.type,
+            date: parsedDate,
+            meeting_event: entry.meeting_event || null,
+            summary: entry.summary,
+            rationale: entry.rationale || null,
+            tags: entry.tags || []
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Failed to save entry:', insertError);
+          continue;
+        }
+
+        savedEntries.push(savedEntry);
       }
-
-      savedEntries.push(savedEntry);
     }
 
-    console.log(`Successfully processed ${savedEntries.length} design log entries`);
+    console.log(`Successfully processed ${savedEntries.length} design log entries and action items`);
 
     return new Response(
       JSON.stringify({

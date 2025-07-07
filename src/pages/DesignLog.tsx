@@ -6,13 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle, AlertCircle, ArrowDown, Users } from 'lucide-react';
+import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle, AlertCircle, ArrowDown, Users, ListTodo } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { DesignLogUpload } from '@/components/DesignLogUpload';
 import { DesignLogChat } from '@/components/DesignLogChat';
 import { OwnerPortal } from '@/components/OwnerPortal';
 import { NotificationBell } from '@/components/NotificationBell';
+import { ActionItemsManager } from '@/components/ActionItemsManager';
 
 interface Project {
   id: string;
@@ -257,10 +258,14 @@ const DesignLog = () => {
 
         {/* Main Tabs */}
         <Tabs defaultValue="designlog" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="designlog" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               DesignLog
+            </TabsTrigger>
+            <TabsTrigger value="actions" className="flex items-center gap-2">
+              <ListTodo className="h-4 w-4" />
+              Action Items
             </TabsTrigger>
             <TabsTrigger value="portal" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
@@ -385,6 +390,10 @@ const DesignLog = () => {
                 ))
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="actions">
+            <ActionItemsManager projectId={projectId!} />
           </TabsContent>
 
           <TabsContent value="portal">
