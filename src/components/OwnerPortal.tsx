@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle, XCircle, MessageSquare, Clock, User, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { DesignLogChat } from './DesignLogChat';
 
 interface DesignLogEntry {
   id: string;
@@ -179,7 +180,7 @@ export function OwnerPortal({ projectId, currentUserRole }: OwnerPortalProps) {
       </div>
 
       <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="pending" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Pending Review
@@ -191,6 +192,10 @@ export function OwnerPortal({ projectId, currentUserRole }: OwnerPortalProps) {
           <TabsTrigger value="approved" className="flex items-center gap-2">
             <CheckCircle className="h-4 w-4" />
             Approved
+          </TabsTrigger>
+          <TabsTrigger value="chat" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Q&A Chat
           </TabsTrigger>
         </TabsList>
 
@@ -228,6 +233,10 @@ export function OwnerPortal({ projectId, currentUserRole }: OwnerPortalProps) {
               getApprovalStatus={getApprovalStatus}
             />
           ))}
+        </TabsContent>
+
+        <TabsContent value="chat" className="space-y-4">
+          <DesignLogChat projectId={projectId} />
         </TabsContent>
       </Tabs>
 
