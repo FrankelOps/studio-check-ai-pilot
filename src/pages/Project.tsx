@@ -193,7 +193,7 @@ const Project = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* File Upload Section */}
           <div className="space-y-6">
             <Card>
@@ -253,7 +253,7 @@ const Project = () => {
           </div>
 
           {/* Analysis Results */}
-          <div>
+          <div className="relative">
             <Card>
               <CardHeader>
                 <CardTitle>QA/QC Analysis Results</CardTitle>
@@ -398,11 +398,11 @@ const Project = () => {
                 )}
               </CardContent>
             </Card>
-          </div>
-
-          {/* AI Chat Section */}
-          <div>
-            <AnalysisChat projectId={projectId!} />
+            
+            {/* Floating AI Chat */}
+            <div className="absolute top-4 right-4 w-80 z-10">
+              <AnalysisChat projectId={projectId!} />
+            </div>
           </div>
         </div>
       </main>
