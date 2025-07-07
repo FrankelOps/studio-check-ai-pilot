@@ -9,6 +9,7 @@ import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { DesignLogUpload } from '@/components/DesignLogUpload';
+import { DesignLogChat } from '@/components/DesignLogChat';
 
 interface Project {
   id: string;
@@ -246,6 +247,11 @@ const DesignLog = () => {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Decision Q&A Chat */}
+        <div className="mb-8">
+          <DesignLogChat projectId={projectId!} />
         </div>
 
         {/* Filters */}
