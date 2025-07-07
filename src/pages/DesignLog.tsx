@@ -10,11 +10,10 @@ import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { DesignLogUpload } from '@/components/DesignLogUpload';
-import { DesignLogChat } from '@/components/DesignLogChat';
+import { ProjectMemoryChat } from '@/components/ProjectMemoryChat';
 import { OwnerPortal } from '@/components/OwnerPortal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ActionItemsManager } from '@/components/ActionItemsManager';
-import { EmbeddingManager } from '@/components/EmbeddingManager';
 
 interface Project {
   id: string;
@@ -275,11 +274,8 @@ const DesignLog = () => {
           </TabsList>
 
           <TabsContent value="designlog" className="space-y-8">
-            {/* Embedding Manager - Phase 1 Implementation */}
-            <EmbeddingManager projectId={projectId!} />
-            
-            {/* Decision Q&A Chat */}
-            <DesignLogChat projectId={projectId!} />
+            {/* Project Memory Chat - Combined AI Experience */}
+            <ProjectMemoryChat projectId={projectId!} />
 
             {/* Filters */}
             <Card>
