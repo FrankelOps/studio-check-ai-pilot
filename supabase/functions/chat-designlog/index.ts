@@ -27,34 +27,64 @@ serve(async (req) => {
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get all design log entries for the project to provide context
-    const { data: designLogData, error: designLogError } = await supabase
-      .from('design_logs')
-      .select(`
-        id,
-        type,
-        date,
-        meeting_event,
-        summary,
-        rationale,
-        status,
-        tags,
-        created_at,
-        uploaded_files!inner(file_name)
-      `)
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false });
+    // Generate embedding for the user's question
+    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: question,
+      }),
+    });
 
-    if (designLogError) {
-      console.error('Error fetching design log data:', designLogError);
-      throw new Error('Failed to fetch design log context');
+    if (!embeddingResponse.ok) {
+      throw new Error('Failed to generate embedding for question');
     }
 
-    // Prepare context from design log entries
-    let designLogContext = '';
-    if (designLogData && designLogData.length > 0) {
-      designLogContext = designLogData.map((entry: any) => {
-        return `
+    const embeddingData = await embeddingResponse.json();
+    const questionEmbedding = embeddingData.data[0].embedding;
+
+    // Search for relevant content using semantic similarity
+    const { data: similarContent, error: searchError } = await supabase.rpc(
+      'search_transcript_embeddings',
+      {
+        query_embedding: questionEmbedding,
+        match_threshold: 0.7,
+        match_count: 10,
+        project_id: projectId
+      }
+    );
+
+    if (searchError) {
+      console.error('Error searching embeddings:', searchError);
+      // Fallback to traditional approach if embeddings search fails
+      const { data: designLogData, error: designLogError } = await supabase
+        .from('design_logs')
+        .select(`
+          id,
+          type,
+          date,
+          meeting_event,
+          summary,
+          rationale,
+          status,
+          tags,
+          created_at,
+          uploaded_files!inner(file_name)
+        `)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (designLogError) {
+        throw new Error('Failed to fetch design log context');
+      }
+
+      // Prepare context from design log entries (fallback)
+      const designLogContext = designLogData?.map((entry: any) => `
 Type: ${entry.type}
 Date: ${entry.date || 'Not specified'}
 Meeting/Event: ${entry.meeting_event || 'Not specified'}
@@ -64,14 +94,35 @@ Status: ${entry.status}
 Tags: ${entry.tags ? entry.tags.join(', ') : 'None'}
 Source File: ${entry.uploaded_files.file_name}
 Created: ${new Date(entry.created_at).toLocaleDateString()}
-`;
-      }).join('\n---\n');
+`).join('\n---\n') || '';
+
+      // Continue with the fallback context
+      return await generateResponse(designLogContext, question);
     }
 
-    const systemPrompt = `You are StudioCheck DesignLog AI Assistant, an expert in architecture and construction design decision tracking.
+    // Prepare context from semantic search results
+    let relevantContext = '';
+    if (similarContent && similarContent.length > 0) {
+      relevantContext = similarContent.map((item: any) => `
+Type: ${item.type}
+Date: ${item.date || 'Not specified'}
+Meeting/Event: ${item.meeting_event || 'Not specified'}
+Summary: ${item.summary}
+Rationale: ${item.rationale || 'None provided'}
+Content: ${item.content_text}
+Similarity Score: ${(item.similarity * 100).toFixed(1)}%
+Created: ${new Date(item.created_at).toLocaleDateString()}
+`).join('\n---\n');
+    }
+
+    return await generateResponse(relevantContext, question);
+
+    // Helper function to generate OpenAI response
+    async function generateResponse(context: string, userQuestion: string) {
+      const systemPrompt = `You are StudioCheck DesignLog AI Assistant, an expert in architecture and construction design decision tracking.
 
 CONTEXT - Design Log Entries for this project:
-${designLogContext}
+${context}
 
 Your role:
 - Answer questions about design decisions, owner requirements, and open questions
@@ -93,46 +144,47 @@ Types of entries in the log:
 - Design Decision: Choices made by the design team with rationale
 - Open Question: Unresolved issues requiring follow-up or decisions`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: question
-          }
-        ],
-        max_tokens: 1000,
-        temperature: 0.3
-      }),
-    });
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: userQuestion
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.3
+        }),
+      });
 
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('OpenAI API error:', errorData);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('OpenAI API error:', errorData);
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const aiResponse = await response.json();
+      const answer = aiResponse.choices[0].message.content;
+
+      console.log('DesignLog AI Chat response generated successfully');
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        answer: answer
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-
-    const aiResponse = await response.json();
-    const answer = aiResponse.choices[0].message.content;
-
-    console.log('DesignLog AI Chat response generated successfully');
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      answer: answer
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error) {
     console.error('Error in chat-designlog function:', error);
