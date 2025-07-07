@@ -40,8 +40,26 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
 
   const fetchData = async () => {
     try {
-      // Fetch meeting minutes - using any type until migration is executed
+      // Check if meeting_minutes table exists by trying a simple query
       const { data: minutesData, error: minutesError } = await (supabase as any)
+        .from('meeting_minutes')
+        .select('id')
+        .limit(1);
+
+      // If we get a specific error about the table not existing, show setup message
+      if (minutesError && (
+        minutesError.message?.includes('relation "public.meeting_minutes" does not exist') ||
+        minutesError.message?.includes('relationship between') ||
+        minutesError.code === 'PGRST106'
+      )) {
+        setMeetingMinutes([]);
+        setDesignLogEntries([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch meeting minutes with files
+      const { data: fullMinutesData, error: fullMinutesError } = await (supabase as any)
         .from('meeting_minutes')
         .select(`
           *,
@@ -50,7 +68,7 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
         .eq('project_id', projectId)
         .order('meeting_date', { ascending: false });
 
-      if (minutesError) throw minutesError;
+      if (fullMinutesError) throw fullMinutesError;
 
       // Fetch design log entries for highlighting
       const { data: entriesData, error: entriesError } = await supabase
@@ -60,15 +78,23 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
 
       if (entriesError) throw entriesError;
 
-      setMeetingMinutes(minutesData || []);
+      setMeetingMinutes(fullMinutesData || []);
       setDesignLogEntries(entriesData || []);
     } catch (error: any) {
       console.error('Error fetching meeting minutes:', error);
-      toast({
-        variant: "destructive",
-        title: "Error loading meeting minutes",
-        description: error.message,
-      });
+      
+      // Check if this is a table not found error
+      if (error.message?.includes('relation "public.meeting_minutes" does not exist') || 
+          error.message?.includes('relationship between')) {
+        setMeetingMinutes([]);
+        setDesignLogEntries([]);
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error loading meeting minutes",
+          description: error.message,
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -167,10 +193,18 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
       <Card>
         <CardContent className="p-8 text-center">
           <FileText className="h-12 w-12 mx-auto mb-4 text-slate-400" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">No meeting minutes found</h3>
-          <p className="text-slate-600">
-            Meeting minutes will appear here after uploading and processing audio or transcript files.
+          <h3 className="text-lg font-medium text-slate-900 mb-2">Meeting Minutes Setup Required</h3>
+          <p className="text-slate-600 mb-4">
+            To use Meeting Minutes, you need to run the database migration first.
           </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
+            <p className="text-sm text-blue-800 font-medium mb-2">Next Steps:</p>
+            <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
+              <li>Run the database migration to create the meeting_minutes table</li>
+              <li>Upload and process audio or transcript files</li>
+              <li>Meeting minutes will appear here automatically</li>
+            </ol>
+          </div>
         </CardContent>
       </Card>
     );
