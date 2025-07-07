@@ -198,16 +198,16 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
       <Card>
         <CardContent className="p-8 text-center">
           <FileText className="h-12 w-12 mx-auto mb-4 text-slate-400" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">Meeting Minutes Setup Required</h3>
+          <h3 className="text-lg font-medium text-slate-900 mb-2">No meeting minutes found</h3>
           <p className="text-slate-600 mb-4">
-            To use Meeting Minutes, you need to run the database migration first.
+            Meeting minutes will be generated automatically when you upload and process audio or transcript files.
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
-            <p className="text-sm text-blue-800 font-medium mb-2">Next Steps:</p>
+            <p className="text-sm text-blue-800 font-medium mb-2">To create meeting minutes:</p>
             <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
-              <li>Run the database migration to create the meeting_minutes table</li>
-              <li>Upload and process audio or transcript files</li>
-              <li>Meeting minutes will appear here automatically</li>
+              <li>Upload audio recordings or transcript files using the "Upload Document" button</li>
+              <li>Files will be automatically processed to extract meeting minutes</li>
+              <li>Generated minutes will appear here with links to related DesignLog entries</li>
             </ol>
           </div>
         </CardContent>
