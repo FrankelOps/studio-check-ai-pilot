@@ -128,7 +128,8 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
           body: {
             fileId: fileRecord.id,
             projectId: projectId,
-            transcribedText: transcriptionResult.text
+            transcribedText: transcriptionResult.text,
+            summaryOutline: transcriptionResult.summary_outline
           }
         });
 

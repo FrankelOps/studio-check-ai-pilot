@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, projectId, transcribedText } = await req.json();
+    const { fileId, projectId, transcribedText, summaryOutline } = await req.json();
     
     if (!fileId || !projectId) {
       throw new Error('Missing required parameters');
@@ -203,7 +203,8 @@ OUTPUT FORMAT:
             meeting_event: entry.meeting_event || null,
             summary: entry.summary,
             rationale: entry.rationale || null,
-            tags: entry.tags || []
+            tags: entry.tags || [],
+            summary_outline: summaryOutline || null
           })
           .select()
           .single();

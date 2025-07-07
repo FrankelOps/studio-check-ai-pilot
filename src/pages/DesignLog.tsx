@@ -14,6 +14,7 @@ import { ProjectMemoryChat } from '@/components/ProjectMemoryChat';
 import { OwnerPortal } from '@/components/OwnerPortal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ActionItemsManager } from '@/components/ActionItemsManager';
+import { KeyInsightsSummary } from '@/components/KeyInsightsSummary';
 
 interface Project {
   id: string;
@@ -30,6 +31,7 @@ interface DesignLogEntry {
   rationale: string | null;
   status: string;
   tags: string[];
+  summary_outline?: string | null;
   created_at: string;
   uploaded_files?: {
     file_name: string;
@@ -46,6 +48,7 @@ const DesignLog = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showUpload, setShowUpload] = useState(false);
+  const [userRole, setUserRole] = useState<string>('');
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -65,6 +68,15 @@ const DesignLog = () => {
 
       if (projectError) throw projectError;
       setProject(projectData);
+
+      // Fetch user role
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      
+      setUserRole(profile?.role || '');
 
       // Fetch design log entries
       const { data: entriesData, error: entriesError } = await supabase
@@ -373,19 +385,34 @@ const DesignLog = () => {
                         <p className="text-slate-600 mb-3">{entry.rationale}</p>
                       )}
 
-                      {entry.tags.length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <Tag className="h-3 w-3 text-slate-400" />
-                          <div className="flex flex-wrap gap-1">
-                            {entry.tags.map((tag, index) => (
-                              <Badge key={index} variant="outline" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
+                       {entry.tags.length > 0 && (
+                         <div className="flex items-center gap-2 mb-4">
+                           <Tag className="h-3 w-3 text-slate-400" />
+                           <div className="flex flex-wrap gap-1">
+                             {entry.tags.map((tag, index) => (
+                               <Badge key={index} variant="outline" className="text-xs">
+                                 {tag}
+                               </Badge>
+                             ))}
+                           </div>
+                         </div>
+                       )}
+
+                       {/* Key Insights Summary */}
+                       <KeyInsightsSummary
+                         designLogId={entry.id}
+                         summaryOutline={entry.summary_outline}
+                         userRole={userRole}
+                         onSummaryUpdate={(newSummary) => {
+                           setEntries(prev => prev.map(e => 
+                             e.id === entry.id ? { ...e, summary_outline: newSummary } : e
+                           ));
+                           setFilteredEntries(prev => prev.map(e => 
+                             e.id === entry.id ? { ...e, summary_outline: newSummary } : e
+                           ));
+                         }}
+                       />
+                     </CardContent>
                   </Card>
                 ))
               )}

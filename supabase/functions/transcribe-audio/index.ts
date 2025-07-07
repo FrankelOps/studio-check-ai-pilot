@@ -174,9 +174,10 @@ serve(async (req) => {
         [...new Set(transcript.utterances.map(u => u.speaker))] : []
     };
 
-    // Enhanced processing with GPT-4o for decision extraction
+    // Enhanced processing with GPT-4o for decision extraction and key insights
     if (transcript.text && transcript.text.length > 100) {
       try {
+        // Generate decision analysis
         const enhancedAnalysis = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -225,6 +226,61 @@ Extract decisions, requirements, action items, and questions with speaker attrib
           processedTranscript.ai_analysis = aiResult.choices[0].message.content;
           console.log('Enhanced AI analysis completed');
         }
+
+        // Generate key insights summary
+        const summaryAnalysis = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            messages: [
+              {
+                role: 'system',
+                content: `You are an AI meeting assistant for an architecture and construction project team.
+
+Your task is to extract a clear, human-readable outline of the key insights from the meeting transcript below.
+
+Focus on capturing:
+- Topics discussed
+- Observations and feedback shared
+- Informal or exploratory discussions
+- Background context (e.g. rationale, constraints)
+- Owner or stakeholder concerns
+- Important themes that may not be decisions or tasks
+
+Format your output as a clean, bulleted summary. Do not include action items, questions, or final decisions — those are handled separately.
+
+Use natural phrasing and keep each bullet concise. If possible, include timestamps at the start of each bullet (e.g., "00:12 — Discussed lobby layout options").`
+              },
+              {
+                role: 'user',
+                content: `Extract key insights from this architectural meeting transcript:
+
+TRANSCRIPT:
+${transcript.text}
+
+${transcript.utterances && transcript.utterances.length > 0 ? 
+  `\nSPEAKER INFORMATION:\n${transcript.utterances.map(u => 
+    `Speaker ${u.speaker} (${Math.floor(u.start/1000/60).toString().padStart(2, '0')}:${Math.floor((u.start/1000)%60).toString().padStart(2, '0')} — ${u.text}`
+  ).join('\n')}` : ''}
+
+Provide a bulleted summary of key discussion points and insights.`
+              }
+            ],
+            temperature: 0.3,
+            max_tokens: 1500
+          }),
+        });
+
+        if (summaryAnalysis.ok) {
+          const summaryResult = await summaryAnalysis.json();
+          processedTranscript.summary_outline = summaryResult.choices[0].message.content;
+          console.log('Key insights summary generated');
+        }
+
       } catch (aiError) {
         console.warn('AI analysis failed:', aiError);
         // Continue without AI analysis
