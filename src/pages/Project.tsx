@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDown, MapPin, FileText, AlertTriangle } from 'lucide-react';
+import { ArrowDown, MapPin, FileText, AlertTriangle, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FileUpload } from '@/components/FileUpload';
@@ -127,6 +127,31 @@ const Project = () => {
     }
   };
 
+  const handleDeleteFile = async (fileId: string, fileName: string) => {
+    try {
+      const { error } = await supabase
+        .from('uploaded_files')
+        .delete()
+        .eq('id', fileId);
+
+      if (error) throw error;
+
+      toast({
+        title: "File deleted",
+        description: `${fileName} has been removed.`,
+      });
+      
+      fetchProjectData(); // Refresh data
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: error.message,
+      });
+    }
+  };
+
   const getSeverityColor = (severity: string) => {
     switch (severity?.toLowerCase()) {
       case 'high': return 'destructive';
@@ -235,25 +260,35 @@ const Project = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {files.map((file) => (
-                      <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium text-slate-900">{file.file_name}</p>
-                          <p className="text-sm text-slate-500">
-                            {(file.file_size / 1024 / 1024).toFixed(2)} MB • 
-                            {' '}Uploaded {new Date(file.uploaded_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={() => handleAnalyze(file.id)}
-                          disabled={analyzing === file.id}
-                          className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
-                        >
-                          {analyzing === file.id ? 'Analyzing...' : 'Analyze'}
-                        </Button>
-                      </div>
-                    ))}
+                     {files.map((file) => (
+                       <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
+                         <div>
+                           <p className="font-medium text-slate-900">{file.file_name}</p>
+                           <p className="text-sm text-slate-500">
+                             {(file.file_size / 1024 / 1024).toFixed(2)} MB • 
+                             {' '}Uploaded {new Date(file.uploaded_at).toLocaleDateString()}
+                           </p>
+                         </div>
+                         <div className="flex items-center gap-2">
+                           <Button
+                             size="sm"
+                             variant="outline"
+                             onClick={() => handleDeleteFile(file.id, file.file_name)}
+                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             size="sm"
+                             onClick={() => handleAnalyze(file.id)}
+                             disabled={analyzing === file.id}
+                             className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
+                           >
+                             {analyzing === file.id ? 'Analyzing...' : 'Analyze'}
+                           </Button>
+                         </div>
+                       </div>
+                     ))}
                   </div>
                 )}
               </CardContent>
