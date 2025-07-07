@@ -5,11 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle, AlertCircle, ArrowDown } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle, AlertCircle, ArrowDown, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { DesignLogUpload } from '@/components/DesignLogUpload';
 import { DesignLogChat } from '@/components/DesignLogChat';
+import { OwnerPortal } from '@/components/OwnerPortal';
+import { NotificationBell } from '@/components/NotificationBell';
 
 interface Project {
   id: string;
@@ -178,10 +181,13 @@ const DesignLog = () => {
               <span className="text-slate-400">/</span>
               <span className="text-blue-600 font-medium">DesignLog</span>
             </div>
-            <Button onClick={() => setShowUpload(true)} className="bg-gradient-to-r from-blue-600 to-blue-800">
-              <FileText className="h-4 w-4 mr-2" />
-              Upload Document
-            </Button>
+            <div className="flex items-center space-x-4">
+              <NotificationBell />
+              <Button onClick={() => setShowUpload(true)} className="bg-gradient-to-r from-blue-600 to-blue-800">
+                <FileText className="h-4 w-4 mr-2" />
+                Upload Document
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -249,124 +255,142 @@ const DesignLog = () => {
           </Card>
         </div>
 
-        {/* Decision Q&A Chat */}
-        <div className="mb-8">
-          <DesignLogChat projectId={projectId!} />
-        </div>
+        {/* Main Tabs */}
+        <Tabs defaultValue="designlog" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-8">
+            <TabsTrigger value="designlog" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              DesignLog
+            </TabsTrigger>
+            <TabsTrigger value="portal" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Owner Portal
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder="Search entries..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="Owner Requirement">Owner Requirements</SelectItem>
-                  <SelectItem value="Design Decision">Design Decisions</SelectItem>
-                  <SelectItem value="Open Question">Open Questions</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full md:w-48">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+          <TabsContent value="designlog" className="space-y-8">
+            {/* Decision Q&A Chat */}
+            <DesignLogChat projectId={projectId!} />
 
-        {/* Entries List */}
-        <div className="space-y-4">
-          {filteredEntries.length === 0 ? (
+            {/* Filters */}
             <Card>
-              <CardContent className="p-8 text-center">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-slate-400" />
-                <h3 className="text-lg font-medium text-slate-900 mb-2">No entries found</h3>
-                <p className="text-slate-600 mb-4">
-                  Upload documents to extract design decisions, requirements, and questions
-                </p>
-                <Button onClick={() => setShowUpload(true)}>
-                  Upload Your First Document
-                </Button>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search entries..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger className="w-full md:w-48 bg-background">
+                      <SelectValue placeholder="Filter by type" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background z-50">
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="Owner Requirement">Owner Requirements</SelectItem>
+                      <SelectItem value="Design Decision">Design Decisions</SelectItem>
+                      <SelectItem value="Open Question">Open Questions</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full md:w-48 bg-background">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background z-50">
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardContent>
             </Card>
-          ) : (
-            filteredEntries.map((entry) => (
-              <Card key={entry.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg border ${getTypeColor(entry.type)}`}>
-                        {getTypeIcon(entry.type)}
-                      </div>
-                      <div>
-                        <Badge variant="outline" className="mb-1">
-                          {entry.type}
-                        </Badge>
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                          {entry.date && (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {new Date(entry.date).toLocaleDateString()}
+
+            {/* Entries List */}
+            <div className="space-y-4">
+              {filteredEntries.length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-slate-400" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No entries found</h3>
+                    <p className="text-slate-600 mb-4">
+                      Upload documents to extract design decisions, requirements, and questions
+                    </p>
+                    <Button onClick={() => setShowUpload(true)}>
+                      Upload Your First Document
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                filteredEntries.map((entry) => (
+                  <Card key={entry.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-lg border ${getTypeColor(entry.type)}`}>
+                            {getTypeIcon(entry.type)}
+                          </div>
+                          <div>
+                            <Badge variant="outline" className="mb-1">
+                              {entry.type}
+                            </Badge>
+                            <div className="flex items-center gap-2 text-sm text-slate-500">
+                              {entry.date && (
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  {new Date(entry.date).toLocaleDateString()}
+                                </div>
+                              )}
+                              {entry.meeting_event && (
+                                <span>• {entry.meeting_event}</span>
+                              )}
+                              {entry.uploaded_files && (
+                                <span>• From: {entry.uploaded_files.file_name}</span>
+                              )}
                             </div>
-                          )}
-                          {entry.meeting_event && (
-                            <span>• {entry.meeting_event}</span>
-                          )}
-                          {entry.uploaded_files && (
-                            <span>• From: {entry.uploaded_files.file_name}</span>
-                          )}
+                          </div>
                         </div>
+                        <Badge variant={entry.status === 'active' ? 'default' : 'secondary'}>
+                          {entry.status}
+                        </Badge>
                       </div>
-                    </div>
-                    <Badge variant={entry.status === 'active' ? 'default' : 'secondary'}>
-                      {entry.status}
-                    </Badge>
-                  </div>
 
-                  <h3 className="font-semibold text-slate-900 mb-2">{entry.summary}</h3>
-                  
-                  {entry.rationale && (
-                    <p className="text-slate-600 mb-3">{entry.rationale}</p>
-                  )}
+                      <h3 className="font-semibold text-slate-900 mb-2">{entry.summary}</h3>
+                      
+                      {entry.rationale && (
+                        <p className="text-slate-600 mb-3">{entry.rationale}</p>
+                      )}
 
-                  {entry.tags.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Tag className="h-3 w-3 text-slate-400" />
-                      <div className="flex flex-wrap gap-1">
-                        {entry.tags.map((tag, index) => (
-                          <Badge key={index} variant="outline" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+                      {entry.tags.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <Tag className="h-3 w-3 text-slate-400" />
+                          <div className="flex flex-wrap gap-1">
+                            {entry.tags.map((tag, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="portal">
+            <OwnerPortal projectId={projectId!} currentUserRole="architect" />
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Upload Modal */}
