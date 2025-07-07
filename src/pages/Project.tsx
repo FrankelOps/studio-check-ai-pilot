@@ -281,10 +281,10 @@ const Project = () => {
                         </div>
                         
                         {analysis.analysis_data && Array.isArray(analysis.analysis_data) && analysis.analysis_data.length > 0 ? (
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             {analysis.analysis_data.map((finding: any, index: number) => (
-                              <div key={index} className="bg-slate-50 rounded-lg p-4 border-l-4 border-l-red-500">
-                                <div className="flex items-start justify-between mb-3">
+                              <div key={index} className="bg-slate-50 rounded-lg p-5 border-l-4 border-l-red-500">
+                                <div className="flex items-start justify-between mb-4">
                                   <div className="flex items-center gap-2">
                                     <Badge variant={getSeverityColor(finding.severity) as any}>
                                       {finding.category}
@@ -302,16 +302,69 @@ const Project = () => {
                                     </Badge>
                                   )}
                                 </div>
+
+                                {/* Enhanced Analysis Display */}
+                                {finding.sheet_reference && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Sheet/Spec Reference</span>
+                                    <p className="text-sm text-slate-800 font-medium">{finding.sheet_reference}</p>
+                                  </div>
+                                )}
+
+                                {finding.location && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Location</span>
+                                    <p className="text-sm text-slate-700">{finding.location}</p>
+                                  </div>
+                                )}
+
+                                {finding.nearby_text && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Nearby Text/Marker</span>
+                                    <p className="text-sm text-slate-700 bg-slate-200 px-2 py-1 rounded font-mono">{finding.nearby_text}</p>
+                                  </div>
+                                )}
+
+                                {finding.issue && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Issue</span>
+                                    <p className="text-sm text-slate-800 font-medium">{finding.issue}</p>
+                                  </div>
+                                )}
+
+                                {finding.construction_impact && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Construction Impact</span>
+                                    <p className="text-sm text-slate-700 leading-relaxed">{finding.construction_impact}</p>
+                                  </div>
+                                )}
+
+                                {finding.reasoning && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">AI Reasoning</span>
+                                    <p className="text-sm text-slate-600 italic leading-relaxed">{finding.reasoning}</p>
+                                  </div>
+                                )}
+
+                                {finding.suggested_action && (
+                                  <div className="mb-3">
+                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Suggested Action</span>
+                                    <p className="text-sm text-slate-800 font-medium bg-blue-50 px-3 py-2 rounded border-l-2 border-blue-400">{finding.suggested_action}</p>
+                                  </div>
+                                )}
+
+                                {/* Fallback for legacy description field */}
+                                {finding.description && !finding.issue && (
+                                  <p className="text-sm text-slate-700 mb-3 leading-relaxed">
+                                    {finding.description}
+                                  </p>
+                                )}
                                 
-                                <p className="text-sm text-slate-700 mb-3 leading-relaxed">
-                                  {finding.description}
-                                </p>
-                                
-                                <div className="space-y-2">
-                                  {finding.location_reference && (
+                                <div className="space-y-2 pt-2 border-t border-slate-200">
+                                  {(finding.location_reference && !finding.location) && (
                                     <div className="flex items-center text-xs text-slate-600">
                                       <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-                                      <span className="font-medium">Location:</span>
+                                      <span className="font-medium">Reference:</span>
                                       <span className="ml-1">{finding.location_reference}</span>
                                     </div>
                                   )}
@@ -319,7 +372,7 @@ const Project = () => {
                                   {finding.cross_references && finding.cross_references.length > 0 && (
                                     <div className="flex items-start text-xs text-blue-600">
                                       <FileText className="h-3 w-3 mr-1 flex-shrink-0 mt-0.5" />
-                                      <span className="font-medium">References:</span>
+                                      <span className="font-medium">Cross-References:</span>
                                       <div className="ml-2 flex flex-wrap gap-1">
                                         {finding.cross_references.map((ref: string, refIdx: number) => (
                                           <Badge key={refIdx} variant="outline" className="text-xs px-1 py-0">

@@ -13,58 +13,53 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// StudioCheck Enhanced Prompt Pack - QA/QC Construction Document Analysis
-const SYSTEM_PROMPT = `You are an expert construction QA/QC reviewer working within StudioCheck, acting like a seasoned owner's rep, architect, or construction manager during pre-construction document review. Your mission is to perform holistic, contextual reviews of construction documents.
+// StudioCheck Professional QA/QC System Prompt
+const SYSTEM_PROMPT = `# Identity
+You are StudioCheck: an AI-powered assistant specialized in construction QA/QC. Your task is to review uploaded construction plan sets (PDFs of drawings + specifications) as a senior QA/QC expert would. You must reason holistically, combining image and text understanding, to identify and report actionable quality risks.
 
-**CRITICAL APPROACH:**
-- Think like an experienced human reviewer who understands construction documents as integrated systems
-- Apply multimodal reasoning (vision + text) to analyze drawings, symbols, annotations, and specifications in full context
-- Assess design intent and coordination between all elements, not just isolated text extraction
-- Identify cross-sheet references and verify their accuracy and alignment
+# Goals
+Your output helps architects, owners reps, and contractors identify issues before construction begins, reducing RFIs, change orders, and costly field errors.
 
-**FOCUS AREAS:**
-- Architectural and engineering plans with full contextual understanding
-- Reflected ceiling plans (RCPs) and MEP coordination
-- Elevations, sections, and detail callouts
-- Schedules (door, hardware, material, finish) and their plan references
-- Specifications and their alignment with drawn elements
-- Detail bubbles and their referenced details
-- Grid references and dimensional coordination
-- Symbol legends and their consistent application
+# Instructions
+- Review the plan set holistically, not by text extraction alone.
+- Use full-sheet visual reasoning (plans, details, notes, symbols, callouts).
+- Compare information across sheets and between plans and specs.
+- For every flagged issue, provide precise construction impact analysis.
 
-**ANALYSIS REQUIREMENTS:**
-1️⃣ **Missing Information** – incomplete dimensions, missing notes, absent key details, undefined symbols
-2️⃣ **Coordination Conflicts** – misalignments between disciplines, RCP vs MEP conflicts, structural vs architectural discrepancies
-3️⃣ **Spec/Product Conflicts** – material schedules that don't match drawings, product specifications inconsistent with shown details
-4️⃣ **Code/ADA Issues** – clearance violations, egress problems, accessibility non-compliance, fire rating conflicts
-5️⃣ **Drawing/Spec Inconsistencies** – contradictions between sheets, detail callouts that don't match referenced details
-6️⃣ **Cross-Reference Failures** – detail callouts referencing non-existent or mismatched details, grid references that don't align
-7️⃣ **Other Red Flags** – anything likely to trigger RFIs, change orders, or construction delays
+# Analysis Categories
+Choose from: Missing Information, Coordination Conflict, Spec/Product Conflict, Code/ADA Issue, Drawing/Spec Inconsistency, Cross-Reference Failure
 
-**CROSS-SHEET VERIFICATION:**
-When you identify a callout or reference (e.g., "Detail 3 on A501", "See Grid B-4 on A101"):
-- Note the reference for future verification when analyzing related sheets
-- Flag when referenced details appear inconsistent with the calling context
-- Identify missing cross-references that should exist
+# Critical Requirements
+- **Sheet/Spec Reference**: Exact sheet numbers, detail callouts, spec sections
+- **Location**: Page number, sheet number, quadrant, nearby marker/label, exact nearby text
+- **Nearby text/marker**: Exact nearby text or marker found in the document
+- **Issue**: Short, precise statement of the problem — what is missing, conflicting, or incorrect
+- **Construction Impact**: Affected trade(s), work impacted, risk level (low/medium/high), potential cost/delay/error
+- **Reasoning**: Your reasoning trace — what data you compared, what mismatch or omission you found
+- **Action**: Recommended next step (e.g. issue RFI, update drawings)
 
-**OUTPUT FORMAT:**
-Return findings as a JSON array with this exact structure:
+# Output Format
+Return findings as JSON array with this structure:
 [
   {
     "category": "Cross-Reference Failure",
-    "description": "Detail 3 callout on A501 at Grid B-4 references a door detail that shows conflicting hardware specifications compared to the door schedule on A101. Hardware Group 'C' specified in schedule requires panic hardware, but detail shows standard lever handle.",
-    "location_reference": "A501 Detail 3, A101 Door Schedule",
+    "sheet_reference": "A101 referencing Detail 5/A502",
+    "location": "Page 3, A101, upper-right quadrant, near Room 101 callout",
+    "nearby_text": "Detail 5 on A502",
+    "issue": "The plan references Detail 5 on A502, but A502 is missing from the document set.",
+    "construction_impact": "Framing subcontractor lacks detail for ceiling transition at Room 101, likely triggering an RFI, causing a 2-3 day delay, and risk of incorrect field conditions. Risk level: High.",
+    "reasoning": "The AI compared plan callouts on A101 against the sheet list and confirmed A502 is missing. This matched the rule: Flag any callout referencing a missing sheet.",
+    "suggested_action": "Verify with design team if A502 exists; issue RFI to request missing detail.",
     "severity": "High",
-    "cross_references": ["A501", "A101"],
+    "cross_references": ["A101", "A502"],
     "requires_coordination": true
   }
 ]
 
-**CATEGORIES:** "Missing Information", "Coordination Conflict", "Spec/Product Conflict", "Code/ADA Issue", "Drawing/Spec Inconsistency", "Cross-Reference Failure", "Other Red Flag"
-**SEVERITY:** "Low", "Medium", "High"
-**Additional Fields:**
-- cross_references: Array of sheet numbers involved
-- requires_coordination: Boolean indicating if issue needs multi-discipline coordination`;
+# Standards
+- Always cite specific evidence. Never give generic statements without proof.
+- Be precise, actionable, and defensible in your outputs.
+- Professional, supportive, precise tone.`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -368,11 +363,23 @@ async function analyzeContent(content: any, fileName: string) {
       const jsonString = jsonMatch ? jsonMatch[0] : analysisText;
       analysisData = JSON.parse(jsonString);
       
-      // Ensure all findings have the required enhanced fields
+      // Ensure all findings have the required enhanced fields and convert to new format
       analysisData = analysisData.map((finding: any) => ({
-        ...finding,
+        // Enhanced StudioCheck format
+        category: finding.category || "Other Red Flag",
+        sheet_reference: finding.sheet_reference || finding.location_reference || fileName,
+        location: finding.location || finding.location_reference || "",
+        nearby_text: finding.nearby_text || "",
+        issue: finding.issue || finding.description || "",
+        construction_impact: finding.construction_impact || "",
+        reasoning: finding.reasoning || "",
+        suggested_action: finding.suggested_action || "",
+        severity: finding.severity || "Medium",
         cross_references: finding.cross_references || [],
-        requires_coordination: finding.requires_coordination || false
+        requires_coordination: finding.requires_coordination || false,
+        // Legacy fields for backward compatibility
+        description: finding.description || finding.issue || "",
+        location_reference: finding.location_reference || finding.sheet_reference || fileName
       }));
       
     } catch (parseError) {
@@ -380,11 +387,19 @@ async function analyzeContent(content: any, fileName: string) {
       // Fallback: create a comprehensive finding with the analysis text
       analysisData = [{
         category: "Other Red Flag",
-        description: `StudioCheck Analysis: ${analysisText}`,
-        location_reference: fileName,
+        sheet_reference: fileName,
+        location: "",
+        nearby_text: "",
+        issue: `StudioCheck Analysis: ${analysisText}`,
+        construction_impact: "Technical analysis limitation encountered. For best results, ensure documents are high-quality images or properly formatted PDFs.",
+        reasoning: "AI response could not be parsed into structured format",
+        suggested_action: "Review document format and retry analysis",
         severity: "Medium",
         cross_references: [],
-        requires_coordination: false
+        requires_coordination: false,
+        // Legacy fields
+        description: `StudioCheck Analysis: ${analysisText}`,
+        location_reference: fileName
       }];
     }
 

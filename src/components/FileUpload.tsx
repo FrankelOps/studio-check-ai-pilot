@@ -133,13 +133,16 @@ export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
                 {isDragActive ? 'Drop files here' : 'Upload Construction Documents'}
               </p>
               <p className="text-sm text-slate-600">
-                Drag & drop PDF files or construction drawings, or click to browse
+                Drag & drop construction plans, specifications, or drawings for expert QA/QC analysis
               </p>
               <p className="text-xs text-slate-500">
                 Supports PDF, PNG, JPG files (max 100MB)
               </p>
+              <p className="text-xs text-blue-600 mt-2 leading-relaxed">
+                🎯 <strong>StudioCheck Enhanced Analysis:</strong> Expert-level construction QA/QC review with cross-sheet verification, construction impact assessment, and actionable findings with specific location references.
+              </p>
               <p className="text-xs text-amber-600 mt-1">
-                💡 For best analysis results, upload construction drawings as JPG/PNG images. StudioCheck can now process PDFs with enhanced cross-sheet analysis capabilities.
+                💡 For optimal analysis: Upload high-resolution JPG/PNG images of construction drawings. PDFs are supported but image formats enable more detailed visual analysis of symbols, dimensions, and annotations.
               </p>
               <Button variant="outline" className="mt-4">
                 Choose Files
