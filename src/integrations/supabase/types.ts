@@ -217,6 +217,57 @@ export type Database = {
           },
         ]
       }
+      meeting_minutes: {
+        Row: {
+          created_at: string
+          file_id: string
+          id: string
+          meeting_date: string
+          meeting_title: string
+          project_id: string
+          summary_outline: string
+          transcript_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          file_id: string
+          id?: string
+          meeting_date: string
+          meeting_title: string
+          project_id: string
+          summary_outline: string
+          transcript_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          file_id?: string
+          id?: string
+          meeting_date?: string
+          meeting_title?: string
+          project_id?: string
+          summary_outline?: string
+          transcript_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meeting_minutes_file_id_fkey"
+            columns: ["file_id"]
+            isOneToOne: false
+            referencedRelation: "uploaded_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meeting_minutes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string | null
