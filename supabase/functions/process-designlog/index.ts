@@ -220,6 +220,93 @@ OUTPUT FORMAT:
 
     console.log(`Successfully processed ${savedEntries.length} design log entries and action items`);
 
+    // Create meeting minutes if transcript text is available
+    if (text && text.length > 100) {
+      try {
+        console.log('Creating meeting minutes record...');
+        
+        // Get the uploaded file info for meeting context
+        const { data: fileInfo } = await supabaseClient
+          .from('uploaded_files')
+          .select('file_name, uploaded_at')
+          .eq('id', fileId)
+          .single();
+
+        // Generate meeting minutes summary
+        let minutesSummary = summaryOutline;
+        if (!minutesSummary) {
+          const meetingMinutesAnalysis = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are an AI meeting assistant for an architecture and construction project team.
+
+Your task is to extract a clear, human-readable outline of the key insights from the meeting transcript below.
+
+Focus on capturing:
+- Topics discussed
+- Observations and feedback shared
+- Informal or exploratory discussions
+- Background context (e.g. rationale, constraints)
+- Owner or stakeholder concerns
+- Important themes that may not be decisions or tasks
+
+Format your output as a clean, bulleted summary. Do not include action items, questions, or final decisions — those are handled separately.
+
+Use natural phrasing and keep each bullet concise. If possible, include timestamps at the start of each bullet (e.g., "00:12 — Discussed lobby layout options").`
+                },
+                {
+                  role: 'user',
+                  content: `Extract key insights from this architectural meeting content:
+
+CONTENT:
+${text}
+
+Provide a bulleted summary of key discussion points and insights.`
+                }
+              ],
+              temperature: 0.3,
+              max_tokens: 1500
+            }),
+          });
+
+          if (meetingMinutesAnalysis.ok) {
+            const minutesResult = await meetingMinutesAnalysis.json();
+            minutesSummary = minutesResult.choices[0].message.content;
+          }
+        }
+
+        if (minutesSummary) {
+          const { error: minutesError } = await supabaseClient
+            .from('meeting_minutes')
+            .insert({
+              project_id: projectId,
+              file_id: fileId,
+              meeting_date: fileInfo?.uploaded_at ? new Date(fileInfo.uploaded_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+              meeting_title: fileInfo?.file_name || 'Meeting Recording',
+              summary_outline: minutesSummary,
+              transcript_text: text
+            });
+
+          if (minutesError) {
+            console.warn('Failed to create meeting minutes:', minutesError);
+          } else {
+            console.log('Meeting minutes created successfully');
+          }
+        }
+      } catch (minutesError) {
+        console.warn('Error creating meeting minutes:', minutesError);
+        // Continue without meeting minutes
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

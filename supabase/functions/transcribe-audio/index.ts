@@ -227,8 +227,8 @@ Extract decisions, requirements, action items, and questions with speaker attrib
           console.log('Enhanced AI analysis completed');
         }
 
-        // Generate key insights summary
-        const summaryAnalysis = await fetch('https://api.openai.com/v1/chat/completions', {
+        // Generate meeting minutes summary for full transcript
+        const meetingMinutesAnalysis = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
@@ -275,10 +275,10 @@ Provide a bulleted summary of key discussion points and insights.`
           }),
         });
 
-        if (summaryAnalysis.ok) {
-          const summaryResult = await summaryAnalysis.json();
-          processedTranscript.summary_outline = summaryResult.choices[0].message.content;
-          console.log('Key insights summary generated');
+        if (meetingMinutesAnalysis.ok) {
+          const minutesResult = await meetingMinutesAnalysis.json();
+          processedTranscript.meeting_minutes_summary = minutesResult.choices[0].message.content;
+          console.log('Meeting minutes summary generated');
         }
 
       } catch (aiError) {

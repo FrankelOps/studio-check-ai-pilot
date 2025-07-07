@@ -13,10 +13,10 @@ serve(async (req) => {
   }
 
   try {
-    const { designLogId } = await req.json();
+    const { designLogId, fileId, projectId, type = 'design_log' } = await req.json();
     
-    if (!designLogId) {
-      throw new Error('Missing design log ID');
+    if (!designLogId && !fileId) {
+      throw new Error('Missing design log ID or file ID');
     }
 
     const supabaseClient = createClient(
@@ -24,35 +24,71 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get the design log entry to find the associated file
-    const { data: designLog, error: designLogError } = await supabaseClient
-      .from('design_logs')
-      .select('*, uploaded_files(*)')
-      .eq('id', designLogId)
-      .single();
-
-    if (designLogError) throw designLogError;
-
     let text = '';
+    let targetTable = 'design_logs';
+    let targetId = designLogId;
 
-    // Try to get the original transcript text
-    if (designLog.uploaded_files) {
-      try {
-        const { data: fileContent, error: downloadError } = await supabaseClient.storage
-          .from('project-files')
-          .download(designLog.uploaded_files.file_path);
+    if (type === 'meeting_minutes' && fileId) {
+      // Handle meeting minutes regeneration
+      targetTable = 'meeting_minutes';
+      
+      // Get the meeting minutes entry
+      const { data: meetingMinute, error: minuteError } = await supabaseClient
+        .from('meeting_minutes')
+        .select('*, uploaded_files(*)')
+        .eq('file_id', fileId)
+        .eq('project_id', projectId)
+        .single();
 
-        if (!downloadError) {
-          text = await fileContent.text();
+      if (minuteError) throw minuteError;
+      
+      targetId = meetingMinute.id;
+      
+      // Try to get the original transcript text
+      if (meetingMinute.transcript_text) {
+        text = meetingMinute.transcript_text;
+      } else if (meetingMinute.uploaded_files) {
+        try {
+          const { data: fileContent, error: downloadError } = await supabaseClient.storage
+            .from('project-files')
+            .download(meetingMinute.uploaded_files.file_path);
+
+          if (!downloadError) {
+            text = await fileContent.text();
+          }
+        } catch (error) {
+          console.warn('Could not download original file:', error);
         }
-      } catch (error) {
-        console.warn('Could not download original file:', error);
       }
-    }
+    } else {
+      // Handle design log regeneration (original logic)
+      const { data: designLog, error: designLogError } = await supabaseClient
+        .from('design_logs')
+        .select('*, uploaded_files(*)')
+        .eq('id', designLogId)
+        .single();
 
-    // If we don't have transcript text, use existing summary as fallback
-    if (!text && designLog.summary) {
-      text = `${designLog.summary}${designLog.rationale ? '\n\n' + designLog.rationale : ''}`;
+      if (designLogError) throw designLogError;
+
+      // Try to get the original transcript text
+      if (designLog.uploaded_files) {
+        try {
+          const { data: fileContent, error: downloadError } = await supabaseClient.storage
+            .from('project-files')
+            .download(designLog.uploaded_files.file_path);
+
+          if (!downloadError) {
+            text = await fileContent.text();
+          }
+        } catch (error) {
+          console.warn('Could not download original file:', error);
+        }
+      }
+
+      // If we don't have transcript text, use existing summary as fallback
+      if (!text && designLog.summary) {
+        text = `${designLog.summary}${designLog.rationale ? '\n\n' + designLog.rationale : ''}`;
+      }
     }
 
     if (!text) {
@@ -109,17 +145,17 @@ Provide a bulleted summary of key discussion points and insights.`
     const summaryResult = await summaryAnalysis.json();
     const summaryOutline = summaryResult.choices[0].message.content;
 
-    // Update the design log entry with the new summary
+    // Update the appropriate table with the new summary
     const { data: updatedEntry, error: updateError } = await supabaseClient
-      .from('design_logs')
+      .from(targetTable)
       .update({ summary_outline: summaryOutline })
-      .eq('id', designLogId)
+      .eq('id', targetId)
       .select()
       .single();
 
     if (updateError) throw updateError;
 
-    console.log(`Successfully regenerated summary for design log ${designLogId}`);
+    console.log(`Successfully regenerated summary for ${targetTable} ${targetId}`);
 
     return new Response(
       JSON.stringify({

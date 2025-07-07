@@ -14,7 +14,7 @@ import { ProjectMemoryChat } from '@/components/ProjectMemoryChat';
 import { OwnerPortal } from '@/components/OwnerPortal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ActionItemsManager } from '@/components/ActionItemsManager';
-import { KeyInsightsSummary } from '@/components/KeyInsightsSummary';
+import { MeetingMinutes } from '@/components/MeetingMinutes';
 
 interface Project {
   id: string;
@@ -270,10 +270,14 @@ const DesignLog = () => {
 
         {/* Main Tabs */}
         <Tabs defaultValue="designlog" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-4 mb-8">
             <TabsTrigger value="designlog" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
               DesignLog
+            </TabsTrigger>
+            <TabsTrigger value="minutes" className="flex items-center gap-2">
+              <MessageSquareText className="h-4 w-4" />
+              Meeting Minutes
             </TabsTrigger>
             <TabsTrigger value="actions" className="flex items-center gap-2">
               <ListTodo className="h-4 w-4" />
@@ -347,7 +351,7 @@ const DesignLog = () => {
                 </Card>
               ) : (
                 filteredEntries.map((entry) => (
-                  <Card key={entry.id} className="hover:shadow-md transition-shadow">
+                  <Card key={entry.id} className="hover:shadow-md transition-shadow" data-entry-id={entry.id}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
@@ -397,26 +401,31 @@ const DesignLog = () => {
                            </div>
                          </div>
                        )}
-
-                       {/* Key Insights Summary */}
-                       <KeyInsightsSummary
-                         designLogId={entry.id}
-                         summaryOutline={entry.summary_outline}
-                         userRole={userRole}
-                         onSummaryUpdate={(newSummary) => {
-                           setEntries(prev => prev.map(e => 
-                             e.id === entry.id ? { ...e, summary_outline: newSummary } : e
-                           ));
-                           setFilteredEntries(prev => prev.map(e => 
-                             e.id === entry.id ? { ...e, summary_outline: newSummary } : e
-                           ));
-                         }}
-                       />
                      </CardContent>
                   </Card>
                 ))
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="minutes">
+            <MeetingMinutes 
+              projectId={projectId!} 
+              userRole={userRole}
+              onNavigateToEntry={(entryId) => {
+                // Switch to designlog tab and scroll to entry
+                const tabsTrigger = document.querySelector('[value="designlog"]') as HTMLElement;
+                if (tabsTrigger) {
+                  tabsTrigger.click();
+                  setTimeout(() => {
+                    const entryElement = document.querySelector(`[data-entry-id="${entryId}"]`);
+                    if (entryElement) {
+                      entryElement.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }, 100);
+                }
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="actions">
