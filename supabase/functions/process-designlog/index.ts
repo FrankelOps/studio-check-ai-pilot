@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { fileId, projectId } = await req.json();
+    const { fileId, projectId, transcribedText } = await req.json();
     
     if (!fileId || !projectId) {
       throw new Error('Missing required parameters');
@@ -24,24 +24,29 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get file details
-    const { data: fileData, error: fileError } = await supabaseClient
-      .from('uploaded_files')
-      .select('*')
-      .eq('id', fileId)
-      .single();
+    let text = transcribedText;
 
-    if (fileError) throw fileError;
+    // If no transcribed text provided, get file content
+    if (!text) {
+      // Get file details
+      const { data: fileData, error: fileError } = await supabaseClient
+        .from('uploaded_files')
+        .select('*')
+        .eq('id', fileId)
+        .single();
 
-    // Download file content
-    const { data: fileContent, error: downloadError } = await supabaseClient.storage
-      .from('project-files')
-      .download(fileData.file_path);
+      if (fileError) throw fileError;
 
-    if (downloadError) throw downloadError;
+      // Download file content
+      const { data: fileContent, error: downloadError } = await supabaseClient.storage
+        .from('project-files')
+        .download(fileData.file_path);
 
-    // Convert file to text (simplified - you might want to use a PDF parser for PDFs)
-    const text = await fileContent.text();
+      if (downloadError) throw downloadError;
+
+      // Convert file to text (simplified - you might want to use a PDF parser for PDFs)
+      text = await fileContent.text();
+    }
 
     // Process with OpenAI using the specific DesignLog prompt
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -87,7 +92,7 @@ OUTPUT FORMAT:
           },
           {
             role: 'user',
-            content: `Extract design decisions, owner requirements, and open questions from this document:\n\n${text}`
+            content: `Extract design decisions, owner requirements, and open questions from this content:\n\n${text}`
           }
         ],
         temperature: 0.3

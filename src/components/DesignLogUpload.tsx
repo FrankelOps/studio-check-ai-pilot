@@ -3,10 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import { FileText, Upload, Loader2, CheckCircle, X } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FileText, Upload, Loader2, CheckCircle, X, Mic, AudioLines } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { AudioRecorder } from './AudioRecorder';
 
 interface DesignLogUploadProps {
   projectId: string;
@@ -19,9 +21,11 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState('documents');
   const { toast } = useToast();
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  // Document upload dropzone
+  const { getRootProps: getDocRootProps, getInputProps: getDocInputProps, isDragActive: isDocDragActive } = useDropzone({
     accept: {
       'application/pdf': ['.pdf'],
       'text/plain': ['.txt'],
@@ -29,13 +33,36 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
     },
     maxFiles: 1,
-    onDrop: handleFileUpload,
+    onDrop: handleDocumentUpload,
   });
 
-  async function handleFileUpload(acceptedFiles: File[]) {
-    if (acceptedFiles.length === 0) return;
+  // Audio file upload dropzone
+  const { getRootProps: getAudioRootProps, getInputProps: getAudioInputProps, isDragActive: isAudioDragActive } = useDropzone({
+    accept: {
+      'audio/*': ['.mp3', '.wav', '.m4a', '.ogg', '.webm'],
+    },
+    maxFiles: 1,
+    onDrop: handleAudioFileUpload,
+  });
 
-    const file = acceptedFiles[0];
+  async function handleDocumentUpload(acceptedFiles: File[]) {
+    if (acceptedFiles.length === 0) return;
+    await processFile(acceptedFiles[0], 'document');
+  }
+
+  async function handleAudioFileUpload(acceptedFiles: File[]) {
+    if (acceptedFiles.length === 0) return;
+    await processFile(acceptedFiles[0], 'audio');
+  }
+
+  async function handleAudioRecorded(audioBlob: Blob, duration: number) {
+    const file = new File([audioBlob], `recording-${Date.now()}.webm`, {
+      type: 'audio/webm'
+    });
+    await processFile(file, 'audio');
+  }
+
+  async function processFile(file: File, type: 'document' | 'audio') {
     setUploading(true);
     setProgress(20);
 
@@ -77,27 +104,61 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
       setUploading(false);
       setProcessing(true);
 
-      // Process with DesignLog AI
-      const { data: processResult, error: processError } = await supabase.functions.invoke('process-designlog', {
-        body: {
-          fileId: fileRecord.id,
-          projectId: projectId
-        }
-      });
+      let processResult;
 
-      if (processError) throw processError;
+      if (type === 'audio') {
+        // First transcribe the audio
+        const audioBase64 = await fileToBase64(file);
+        
+        const { data: transcriptionResult, error: transcriptionError } = await supabase.functions.invoke('transcribe-audio', {
+          body: {
+            audio: audioBase64,
+            mimeType: file.type
+          }
+        });
+
+        if (transcriptionError) throw transcriptionError;
+
+        if (!transcriptionResult.success) {
+          throw new Error(transcriptionResult.error || 'Transcription failed');
+        }
+
+        // Then process the transcribed text with DesignLog AI
+        const { data: designLogResult, error: designLogError } = await supabase.functions.invoke('process-designlog', {
+          body: {
+            fileId: fileRecord.id,
+            projectId: projectId,
+            transcribedText: transcriptionResult.text
+          }
+        });
+
+        if (designLogError) throw designLogError;
+        processResult = designLogResult;
+
+      } else {
+        // Process document directly
+        const { data: documentResult, error: documentError } = await supabase.functions.invoke('process-designlog', {
+          body: {
+            fileId: fileRecord.id,
+            projectId: projectId
+          }
+        });
+
+        if (documentError) throw documentError;
+        processResult = documentResult;
+      }
 
       setProgress(100);
       setProcessing(false);
       setResults(processResult);
 
       toast({
-        title: "Document processed successfully!",
-        description: `Extracted ${processResult.entriesSaved} design log entries.`,
+        title: "Processing completed!",
+        description: `Extracted ${processResult.entriesSaved} design log entries from ${type === 'audio' ? 'audio transcription' : 'document'}.`,
       });
 
     } catch (error: any) {
-      console.error('Upload/processing error:', error);
+      console.error('Processing error:', error);
       setUploading(false);
       setProcessing(false);
       toast({
@@ -108,6 +169,20 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
     }
   }
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove the data:audio/webm;base64, prefix
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   const handleComplete = () => {
     setResults(null);
     setProgress(0);
@@ -116,40 +191,89 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Upload Document for DesignLog Analysis
+            Upload Content for DesignLog Analysis
           </DialogTitle>
           <DialogDescription>
-            Upload meeting notes, transcripts, or documents to extract design decisions, owner requirements, and open questions.
+            Upload documents, audio files, or record audio to extract design decisions, owner requirements, and open questions.
           </DialogDescription>
         </DialogHeader>
 
         {!results ? (
           <div className="space-y-6">
             {!uploading && !processing && (
-              <Card className="border-dashed border-2 border-blue-200 bg-blue-50/50">
-                <CardContent className="p-6">
-                  <div
-                    {...getRootProps()}
-                    className={`text-center cursor-pointer transition-colors ${
-                      isDragActive ? 'bg-blue-100' : 'hover:bg-blue-100/50'
-                    } rounded-lg p-8`}
-                  >
-                    <input {...getInputProps()} />
-                    <Upload className="h-12 w-12 mx-auto mb-4 text-blue-500" />
-                    <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                      {isDragActive ? 'Drop file here' : 'Drop file here or click to browse'}
-                    </h3>
-                    <p className="text-sm text-slate-600 mb-4">
-                      Supports PDF, DOC, DOCX, and TXT files
-                    </p>
-                    <Button variant="outline">Choose File</Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="documents" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Documents
+                  </TabsTrigger>
+                  <TabsTrigger value="audio-files" className="flex items-center gap-2">
+                    <AudioLines className="h-4 w-4" />
+                    Audio Files
+                  </TabsTrigger>
+                  <TabsTrigger value="record" className="flex items-center gap-2">
+                    <Mic className="h-4 w-4" />
+                    Record Audio
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="documents" className="space-y-4">
+                  <Card className="border-dashed border-2 border-blue-200 bg-blue-50/50">
+                    <CardContent className="p-6">
+                      <div
+                        {...getDocRootProps()}
+                        className={`text-center cursor-pointer transition-colors ${
+                          isDocDragActive ? 'bg-blue-100' : 'hover:bg-blue-100/50'
+                        } rounded-lg p-8`}
+                      >
+                        <input {...getDocInputProps()} />
+                        <FileText className="h-12 w-12 mx-auto mb-4 text-blue-500" />
+                        <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                          {isDocDragActive ? 'Drop document here' : 'Drop document here or click to browse'}
+                        </h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                          Supports PDF, DOC, DOCX, and TXT files
+                        </p>
+                        <Button variant="outline">Choose Document</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="audio-files" className="space-y-4">
+                  <Card className="border-dashed border-2 border-green-200 bg-green-50/50">
+                    <CardContent className="p-6">
+                      <div
+                        {...getAudioRootProps()}
+                        className={`text-center cursor-pointer transition-colors ${
+                          isAudioDragActive ? 'bg-green-100' : 'hover:bg-green-100/50'
+                        } rounded-lg p-8`}
+                      >
+                        <input {...getAudioInputProps()} />
+                        <AudioLines className="h-12 w-12 mx-auto mb-4 text-green-500" />
+                        <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                          {isAudioDragActive ? 'Drop audio file here' : 'Drop audio file here or click to browse'}
+                        </h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                          Supports MP3, WAV, M4A, OGG, and WEBM files
+                        </p>
+                        <Button variant="outline">Choose Audio File</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="record" className="space-y-4">
+                  <AudioRecorder 
+                    onAudioRecorded={handleAudioRecorded}
+                    disabled={uploading || processing}
+                  />
+                </TabsContent>
+              </Tabs>
             )}
 
             {(uploading || processing) && (
@@ -158,11 +282,13 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
                   <div className="text-center">
                     <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-blue-500" />
                     <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                      {uploading ? 'Uploading document...' : 'Processing with AI...'}
+                      {uploading ? 'Uploading content...' : 'Processing with AI...'}
                     </h3>
                     <p className="text-sm text-slate-600 mb-4">
                       {uploading 
-                        ? 'Uploading your document to secure storage'
+                        ? 'Uploading your content to secure storage'
+                        : processing && (activeTab === 'record' || activeTab === 'audio-files')
+                        ? 'Transcribing audio and extracting design decisions'
                         : 'AI is extracting design decisions, requirements, and questions'
                       }
                     </p>
@@ -181,7 +307,7 @@ export function DesignLogUpload({ projectId, onClose, onUploadComplete }: Design
                 Processing Complete!
               </CardTitle>
               <CardDescription>
-                Successfully analyzed your document and extracted {results.entriesSaved} entries.
+                Successfully analyzed your content and extracted {results.entriesSaved} entries.
               </CardDescription>
             </CardHeader>
             <CardContent>
