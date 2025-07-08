@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDown, MapPin, FileText, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowDown, MapPin, FileText, AlertTriangle, Trash2, MessageSquare, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FileUpload } from '@/components/FileUpload';
@@ -161,6 +161,45 @@ const Project = () => {
     }
   };
 
+  const getFileStatus = (fileId: string) => {
+    const hasAnalysis = analyses.some(analysis => 
+      analysis.uploaded_files && 
+      fileId === analyses.find(a => a.uploaded_files.file_name === files.find(f => f.id === fileId)?.file_name)?.id
+    );
+    
+    if (analyzing === fileId) return 'pending';
+    if (hasAnalysis) return 'analyzed';
+    return 'pending';
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'analyzed':
+        return (
+          <Badge variant="outline" className="text-green-700 border-green-200 bg-green-50">
+            <CheckCircle className="h-3 w-3 mr-1" />
+            Analyzed
+          </Badge>
+        );
+      case 'pending':
+        return (
+          <Badge variant="outline" className="text-amber-700 border-amber-200 bg-amber-50">
+            <Clock className="h-3 w-3 mr-1" />
+            Pending
+          </Badge>
+        );
+      case 'error':
+        return (
+          <Badge variant="outline" className="text-red-700 border-red-200 bg-red-50">
+            <XCircle className="h-3 w-3 mr-1" />
+            Error
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   useEffect(() => {
     fetchProjectData();
   }, [projectId]);
@@ -226,6 +265,24 @@ const Project = () => {
           )}
         </div>
 
+        {/* AI Chat Assistant - Prominent Top Position */}
+        <div className="mb-8">
+          <Card className="shadow-lg border-2 border-primary/20 bg-white/95 backdrop-blur-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <MessageSquare className="h-6 w-6 text-primary" />
+                🧠 Ask the AI about your QA/QC results
+              </CardTitle>
+              <CardDescription className="text-base">
+                Get expert analysis and insights about your construction document findings
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AnalysisChat projectId={projectId!} />
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* File Upload Section */}
           <div className="space-y-6">
@@ -262,8 +319,11 @@ const Project = () => {
                   <div className="space-y-3">
                      {files.map((file) => (
                        <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
-                         <div>
-                           <p className="font-medium text-slate-900">{file.file_name}</p>
+                         <div className="flex-1">
+                           <div className="flex items-center gap-2 mb-1">
+                             <p className="font-medium text-slate-900">{file.file_name}</p>
+                             {getStatusBadge(getFileStatus(file.id))}
+                           </div>
                            <p className="text-sm text-slate-500">
                              {(file.file_size / 1024 / 1024).toFixed(2)} MB • 
                              {' '}Uploaded {new Date(file.uploaded_at).toLocaleDateString()}
@@ -442,10 +502,6 @@ const Project = () => {
               </CardContent>
             </Card>
             
-            {/* Floating AI Chat */}
-            <div className="absolute top-4 right-4 w-80 z-10">
-              <AnalysisChat projectId={projectId!} />
-            </div>
           </div>
         </div>
       </main>
