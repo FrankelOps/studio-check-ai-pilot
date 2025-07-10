@@ -35,19 +35,19 @@ For electrical systems, match circuit tags in panel schedules (e.g., "Ckt 3") wi
 # ENFORCEMENT LOGIC: STRUCTURED OUTPUT + FIELD VALIDATION
 
 1. ✅ **REQUIRED FIELDS** (each must appear exactly once per issue):
-   - `sheet_number`: Drawing sheet ID (e.g., A101). Do NOT use PDF page numbers.
-   - `location_quadrant`: e.g., "upper-right", "bottom-left"
-   - `nearby_text`: Nearby anchor or label (e.g., "Room 203", "Panel A")
-   - `issue`: Clear, short description of what's wrong
-   - `construction_impact`: Must include trade(s) + real-world risk to install/delay
-   - `reasoning`: What you compared, what you found (must be specific)
-   - `suggested_action`: Clear next step (e.g., "Issue RFI", "Coordinate with Structural")
-   - `severity`: One of: Low, Medium, High
-   - `cross_references`: List of involved sheet numbers
-   - `requires_coordination`: true/false
+   - sheet_number: Drawing sheet ID (e.g., A101). Do NOT use PDF page numbers.
+   - location_quadrant: e.g., "upper-right", "bottom-left"
+   - nearby_text: Nearby anchor or label (e.g., "Room 203", "Panel A")
+   - issue: Clear, short description of what's wrong
+   - construction_impact: Must include trade(s) + real-world risk to install/delay
+   - reasoning: What you compared, what you found (must be specific)
+   - suggested_action: Clear next step (e.g., "Issue RFI", "Coordinate with Structural")
+   - severity: One of: Low, Medium, High
+   - cross_references: List of involved sheet numbers
+   - requires_coordination: true/false
 
 2. ❌ **DISALLOWED FIELDS**:
-   - `page_number`: Never include or reference PDF page numbers.
+   - page_number: Never include or reference PDF page numbers.
    - Any non-standard fields not listed above.
 
 3. ❗**RISK SEVERITY RULES**:
