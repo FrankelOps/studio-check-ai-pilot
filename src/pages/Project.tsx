@@ -380,7 +380,7 @@ const Project = () => {
                             {analysis.uploaded_files.file_name}
                           </h3>
                           <span className="text-sm text-slate-500">
-                            {new Date(analysis.created_at).toLocaleDateString()}
+                            {new Date(analysis.created_at).toLocaleString()}
                           </span>
                         </div>
                         
