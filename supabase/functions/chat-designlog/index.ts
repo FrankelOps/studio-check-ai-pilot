@@ -54,7 +54,7 @@ serve(async (req) => {
         query_embedding: questionEmbedding,
         match_threshold: 0.7,
         match_count: 10,
-        project_id: projectId
+        project_id_param: projectId
       }
     );
 
@@ -97,47 +97,123 @@ Created: ${new Date(entry.created_at).toLocaleDateString()}
 `).join('\n---\n') || '';
 
       // Continue with the fallback context
-      return await generateResponse(designLogContext, question);
+      return await generateResponse(designLogContext, '', question, []);
     }
 
-    // Prepare context from semantic search results
+    // Get unique design_log_ids from search results to fetch full transcripts
+    const designLogIds = [...new Set(similarContent?.map((item: any) => item.design_log_id) || [])];
+    
+    // Fetch full meeting transcripts for the matched design logs
+    let fullTranscripts: any[] = [];
+    if (designLogIds.length > 0) {
+      const { data: meetingMinutes, error: transcriptError } = await supabase
+        .from('meeting_minutes')
+        .select('meeting_title, meeting_date, transcript_text, design_logs!inner(id)')
+        .in('design_logs.id', designLogIds)
+        .not('transcript_text', 'is', null)
+        .order('meeting_date', { ascending: false });
+      
+      if (!transcriptError && meetingMinutes) {
+        fullTranscripts = meetingMinutes;
+      }
+    }
+
+    // Also try keyword search as fallback if embeddings don't return good results
+    let keywordSearchResults: any[] = [];
+    if (similarContent?.length === 0 || !similarContent) {
+      const { data: keywordData, error: keywordError } = await supabase
+        .from('meeting_minutes')
+        .select('meeting_title, meeting_date, transcript_text, design_logs!inner(id, project_id)')
+        .eq('design_logs.project_id', projectId)
+        .textSearch('transcript_text', question.replace(/[^a-zA-Z0-9\s]/g, ''))
+        .not('transcript_text', 'is', null)
+        .limit(3);
+      
+      if (!keywordError && keywordData) {
+        keywordSearchResults = keywordData;
+      }
+    }
+
+    // Prepare enhanced context with both embeddings and full transcripts
     let relevantContext = '';
+    let transcriptContext = '';
+
     if (similarContent && similarContent.length > 0) {
       relevantContext = similarContent.map((item: any) => `
+Design Log Entry:
 Type: ${item.type}
 Date: ${item.date || 'Not specified'}
 Meeting/Event: ${item.meeting_event || 'Not specified'}
 Summary: ${item.summary}
 Rationale: ${item.rationale || 'None provided'}
-Content: ${item.content_text}
+Relevant Content: ${item.content_text}
 Similarity Score: ${(item.similarity * 100).toFixed(1)}%
 Created: ${new Date(item.created_at).toLocaleDateString()}
 `).join('\n---\n');
     }
 
-    return await generateResponse(relevantContext, question);
+    if (fullTranscripts.length > 0) {
+      transcriptContext = fullTranscripts.map((transcript: any) => `
+Full Meeting Transcript:
+Meeting: ${transcript.meeting_title}
+Date: ${new Date(transcript.meeting_date).toLocaleDateString()}
+Transcript: ${transcript.transcript_text}
+`).join('\n---\n');
+    }
 
-    // Helper function to generate OpenAI response
-    async function generateResponse(context: string, userQuestion: string) {
+    if (keywordSearchResults.length > 0) {
+      const keywordContext = keywordSearchResults.map((result: any) => `
+Keyword Match - Meeting Transcript:
+Meeting: ${result.meeting_title}
+Date: ${new Date(result.meeting_date).toLocaleDateString()}
+Transcript: ${result.transcript_text}
+`).join('\n---\n');
+      
+      transcriptContext = transcriptContext ? transcriptContext + '\n---\n' + keywordContext : keywordContext;
+    }
+
+    return await generateResponse(relevantContext, transcriptContext, question, fullTranscripts);
+
+  } catch (error) {
+    console.error('Error in chat-designlog function:', error);
+    return new Response(JSON.stringify({ 
+      error: error.message,
+      success: false 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
+// Helper function to generate OpenAI response
+async function generateResponse(context: string, transcriptContext: string, userQuestion: string, fullTranscripts: any[]) {
       const systemPrompt = `You are StudioCheck DesignLog AI Assistant, an expert in architecture and construction design decision tracking.
 
-CONTEXT - Design Log Entries for this project:
-${context}
+You have access to both design log summaries and full meeting transcripts to answer questions comprehensively.
+
+${context ? `CONTEXT - Design Log Entries:
+${context}` : ''}
+
+${transcriptContext ? `CONTEXT - Meeting Transcripts:
+${transcriptContext}` : ''}
 
 Your role:
 - Answer questions about design decisions, owner requirements, and open questions
-- Explain the rationale behind design choices
+- Explain the rationale behind design choices using both summaries and transcript details
 - Help track decision history and context
 - Provide insights on project requirements and constraints
-- Reference specific log entries when answering questions
+- Quote specific transcript excerpts when relevant to support your answers
 
-Guidelines:
-- Always reference specific design log entries when answering
+Enhanced Guidelines:
+- When transcript excerpts are available, quote relevant parts directly
+- Include meeting dates and titles when referencing transcript content
+- If a topic was discussed in multiple meetings, summarize how the conversation evolved
+- Use the format: "From [Meeting Title] on [Date]: [quoted excerpt]"
 - Distinguish between Owner Requirements, Design Decisions, and Open Questions
-- Provide context from meeting notes and rationale when available
 - Use professional, clear language appropriate for architects and design teams
-- If a question can't be answered from the available design log data, say so clearly
-- Focus on helping maintain design continuity and decision traceability
+- If a question can't be answered from available data, say so clearly
+- Prioritize transcript content over summaries when both are available for better accuracy
 
 Types of entries in the log:
 - Owner Requirement: Client-stated preferences, requests, or constraints
@@ -178,22 +254,18 @@ Types of entries in the log:
 
       console.log('DesignLog AI Chat response generated successfully');
 
+      // Extract source information for the UI
+      const sources = fullTranscripts.map((transcript: any) => ({
+        meeting_title: transcript.meeting_title,
+        meeting_date: transcript.meeting_date,
+        hasTranscript: true
+      }));
+
       return new Response(JSON.stringify({ 
         success: true, 
-        answer: answer
+        answer: answer,
+        sources: sources
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-    }
-
-  } catch (error) {
-    console.error('Error in chat-designlog function:', error);
-    return new Response(JSON.stringify({ 
-      error: error.message,
-      success: false 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
+}

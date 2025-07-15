@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageSquare, Send, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { MessageSquare, Send, Loader2, Calendar, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -14,6 +15,13 @@ interface ChatMessage {
   type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  sources?: TranscriptSource[];
+}
+
+interface TranscriptSource {
+  meeting_title: string;
+  meeting_date: string;
+  hasTranscript: boolean;
 }
 
 export function DesignLogChat({ projectId }: DesignLogChatProps) {
@@ -47,7 +55,8 @@ export function DesignLogChat({ projectId }: DesignLogChatProps) {
         const assistantMessage: ChatMessage = {
           type: 'assistant',
           content: data.answer,
-          timestamp: new Date()
+          timestamp: new Date(),
+          sources: data.sources || []
         };
         setMessages(prev => [...prev, assistantMessage]);
       } else {
@@ -73,7 +82,7 @@ export function DesignLogChat({ projectId }: DesignLogChatProps) {
           Decision Q&A
         </CardTitle>
         <p className="text-sm text-slate-600">
-          Ask the AI about design rationale, past decisions, or requirements based on all logs.
+          Ask the AI about design rationale, past decisions, or requirements based on meeting transcripts and design logs.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -108,6 +117,22 @@ export function DesignLogChat({ projectId }: DesignLogChatProps) {
                 <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
                   {message.content}
                 </p>
+                {message.type === 'assistant' && message.sources && message.sources.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText className="h-3 w-3 text-slate-500" />
+                      <span className="text-xs font-medium text-slate-600">Sources:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {message.sources.map((source, sourceIndex) => (
+                        <Badge key={sourceIndex} variant="secondary" className="text-xs">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {source.meeting_title} ({new Date(source.meeting_date).toLocaleDateString()})
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           )}

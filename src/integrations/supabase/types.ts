@@ -542,7 +542,7 @@ export type Database = {
           query_embedding: string
           match_threshold?: number
           match_count?: number
-          project_id?: string
+          project_id_param?: string
         }
         Returns: {
           id: string
