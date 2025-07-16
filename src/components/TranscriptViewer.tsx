@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Search, Clock, User, Copy, Check } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Search, Clock, User, Copy, Check, FileText, Code } from "lucide-react";
 
 interface SpeakerSegment {
   speaker: string;
@@ -32,6 +33,8 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [copied, setCopied] = useState(false);
+  const [isCleanView, setIsCleanView] = useState(true);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const handleCopyTranscript = async () => {
     try {
@@ -40,6 +43,98 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy transcript:', err);
+    }
+  };
+
+  const handleToggleView = () => {
+    // Preserve scroll position
+    const currentScrollTop = scrollAreaRef.current?.scrollTop || 0;
+    setIsCleanView(!isCleanView);
+    
+    // Restore scroll position after state update
+    setTimeout(() => {
+      if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTop = currentScrollTop;
+      }
+    }, 0);
+  };
+
+  const formatCleanTranscript = (text: string): string[] => {
+    if (!text) return [];
+    
+    // Basic formatting: add paragraph breaks and improve readability
+    const paragraphs = text
+      .split(/\n+/)
+      .filter(p => p.trim().length > 0)
+      .map(paragraph => {
+        // Clean up spacing and add basic punctuation
+        let cleaned = paragraph.trim();
+        
+        // Add period if missing at end of sentences
+        if (cleaned.length > 0 && !cleaned.match(/[.!?]$/)) {
+          cleaned += '.';
+        }
+        
+        return cleaned;
+      });
+
+    return paragraphs;
+  };
+
+  const renderCleanView = () => {
+    if (speakerSegments && speakerSegments.length > 0) {
+      // Group segments into paragraphs and add speaker labels
+      const filteredSegments = speakerSegments.filter(segment => 
+        !searchTerm || 
+        segment.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        segment.speaker.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+      return (
+        <div className="space-y-6">
+          <p className="text-sm text-muted-foreground mb-4">
+            Formatted transcript with enhanced readability
+          </p>
+          {filteredSegments.map((segment, index) => (
+            <div key={index} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="flex items-center gap-1 bg-primary/5">
+                  <User className="h-3 w-3" />
+                  {segment.speaker}
+                </Badge>
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                  <Clock className="h-3 w-3" />
+                  {segment.start_time}
+                </Badge>
+              </div>
+              <div className="pl-4 border-l-2 border-primary/10">
+                <p className="text-base leading-relaxed text-foreground">
+                  {highlightText(segment.text.trim() + (segment.text.trim().match(/[.!?]$/) ? '' : '.'), searchTerm)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    } else {
+      // Format plain transcript into paragraphs
+      const paragraphs = formatCleanTranscript(transcript);
+      const filteredParagraphs = paragraphs.filter(p => 
+        !searchTerm || p.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground mb-4">
+            Formatted transcript with enhanced readability
+          </p>
+          {filteredParagraphs.map((paragraph, index) => (
+            <p key={index} className="text-base leading-relaxed text-foreground mb-4">
+              {highlightText(paragraph, searchTerm)}
+            </p>
+          ))}
+        </div>
+      );
     }
   };
 
@@ -140,9 +235,32 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
             </Button>
           </DialogTitle>
 
-          {/* Search Bar */}
-          <div className="flex items-center gap-2 pt-4">
-            <div className="relative flex-1">
+          {/* View Toggle & Search Bar */}
+          <div className="space-y-3 pt-4">
+            {/* View Toggle */}
+            <div className="flex items-center justify-between bg-muted/30 rounded-lg p-3">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Code className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Raw View</span>
+                </div>
+                <Switch 
+                  checked={isCleanView}
+                  onCheckedChange={handleToggleView}
+                  className="data-[state=checked]:bg-primary"
+                />
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Clean View</span>
+                </div>
+              </div>
+              <Badge variant="secondary" className="text-xs">
+                {isCleanView ? 'Formatted' : 'Original'}
+              </Badge>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search transcript..."
@@ -155,9 +273,9 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
         </DialogHeader>
 
         {/* Scrollable Content */}
-        <ScrollArea className="overflow-auto px-4 py-2 h-full flex-1">
+        <ScrollArea ref={scrollAreaRef} className="overflow-auto px-4 py-2 h-full flex-1">
           <div className="text-base leading-relaxed">
-            {renderSpeakerSegments()}
+            {isCleanView ? renderCleanView() : renderSpeakerSegments()}
           </div>
         </ScrollArea>
       </DialogContent>
