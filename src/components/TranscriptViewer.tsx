@@ -108,11 +108,12 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+        {/* Sticky Header */}
+        <DialogHeader className="sticky top-0 bg-background border-b pb-4 z-10">
           <DialogTitle className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold">{title}</h3>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-semibold truncate">{title}</h3>
               {date && (
                 <p className="text-sm text-muted-foreground mt-1">
                   {new Date(date).toLocaleDateString()}
@@ -123,7 +124,7 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
               variant="outline"
               size="sm"
               onClick={handleCopyTranscript}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 ml-4 shrink-0"
             >
               {copied ? (
                 <>
@@ -138,22 +139,26 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
               )}
             </Button>
           </DialogTitle>
+
+          {/* Search Bar */}
+          <div className="flex items-center gap-2 pt-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search transcript..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 py-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search transcript..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+        {/* Scrollable Content */}
+        <ScrollArea className="overflow-auto px-4 py-2 h-full flex-1">
+          <div className="text-base leading-relaxed">
+            {renderSpeakerSegments()}
           </div>
-        </div>
-
-        <ScrollArea className="flex-1 pr-4">
-          {renderSpeakerSegments()}
         </ScrollArea>
       </DialogContent>
     </Dialog>
