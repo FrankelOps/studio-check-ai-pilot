@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, FileText, RefreshCw, Loader2, ExternalLink } from 'lucide-react';
+import { Calendar, FileText, RefreshCw, Loader2, ExternalLink, Eye } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { TranscriptViewer } from './TranscriptViewer';
 
 interface MeetingMinute {
   id: string;
@@ -198,6 +199,16 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
     });
   };
 
+  const handleViewTranscript = (minute: MeetingMinute) => {
+    setTranscriptViewer({
+      isOpen: true,
+      title: minute.meeting_title,
+      date: minute.meeting_date,
+      transcript: minute.transcript_text || "No transcript available",
+      speakerSegments: minute.speaker_segments as any[],
+    });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -250,37 +261,55 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
                   <CardTitle className="text-lg text-slate-900 mb-2">
                     {minute.meeting_title}
                   </CardTitle>
-                  <div className="flex items-center gap-4 text-sm text-slate-500">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      {new Date(minute.meeting_date).toLocaleDateString()}
+                   <div className="flex items-center gap-4 text-sm text-slate-500">
+                     <div className="flex items-center gap-1">
+                       <Calendar className="h-4 w-4" />
+                       {new Date(minute.meeting_date).toLocaleDateString()}
+                     </div>
+                     {minute.uploaded_files && (
+                       <span>• From: {minute.uploaded_files.file_name}</span>
+                     )}
+                     {minute.has_transcript && (
+                       <Badge variant="secondary" className="ml-2">
+                         Transcript Available
+                       </Badge>
+                      )}
                     </div>
-                    {minute.uploaded_files && (
-                      <span>• From: {minute.uploaded_files.file_name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {minute.has_transcript && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewTranscript(minute)}
+                        className="flex items-center gap-1"
+                      >
+                        <Eye className="h-4 w-4" />
+                        View Transcript
+                      </Button>
+                    )}
+                    {userRole === 'admin' && (
+                      <Button
+                        onClick={() => handleRegenerate(minute.id, minute.file_id)}
+                        disabled={regeneratingId === minute.id}
+                        variant="outline"
+                        size="sm"
+                        className="text-slate-700 border-slate-300 hover:bg-slate-100"
+                      >
+                        {regeneratingId === minute.id ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                            Regenerating...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="h-3 w-3 mr-2" />
+                            Regenerate
+                          </>
+                        )}
+                      </Button>
                     )}
                   </div>
-                </div>
-                {userRole === 'admin' && (
-                  <Button
-                    onClick={() => handleRegenerate(minute.id, minute.file_id)}
-                    disabled={regeneratingId === minute.id}
-                    variant="outline"
-                    size="sm"
-                    className="text-slate-700 border-slate-300 hover:bg-slate-100"
-                  >
-                    {regeneratingId === minute.id ? (
-                      <>
-                        <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-3 w-3 mr-2" />
-                        Regenerate
-                      </>
-                    )}
-                  </Button>
-                )}
               </div>
             </CardHeader>
             <CardContent className="pt-0">
@@ -301,6 +330,15 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
           </Card>
         ))}
       </div>
+
+      <TranscriptViewer
+        isOpen={transcriptViewer.isOpen}
+        onClose={() => setTranscriptViewer(prev => ({ ...prev, isOpen: false }))}
+        title={transcriptViewer.title}
+        date={transcriptViewer.date}
+        transcript={transcriptViewer.transcript}
+        speakerSegments={transcriptViewer.speakerSegments}
+      />
     </div>
   );
 }
