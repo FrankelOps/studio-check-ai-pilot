@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { FileText, Search, Filter, Calendar, Tag, MessageSquareText, CheckCircle, AlertCircle, ArrowDown, Users, ListTodo } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -49,6 +50,9 @@ const DesignLog = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showUpload, setShowUpload] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<string>('entries');
+  const [actionItemsCount, setActionItemsCount] = useState<number>(0);
+  const [hasUploadedFiles, setHasUploadedFiles] = useState<boolean>(false);
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -91,6 +95,25 @@ const DesignLog = () => {
       if (entriesError) throw entriesError;
       setEntries(entriesData as DesignLogEntry[] || []);
       setFilteredEntries(entriesData as DesignLogEntry[] || []);
+
+      // Check if we have uploaded files (meeting minutes or design logs)
+      const { data: meetingMinutesData, error: meetingError } = await supabase
+        .from('meeting_minutes')
+        .select('id')
+        .eq('project_id', projectId)
+        .limit(1);
+
+      setHasUploadedFiles(!meetingError && meetingMinutesData && meetingMinutesData.length > 0);
+
+      // Fetch action items count
+      const { data: actionItemsData, error: actionItemsError } = await supabase
+        .from('action_items')
+        .select('id')
+        .eq('project_id', projectId);
+
+      if (!actionItemsError && actionItemsData) {
+        setActionItemsCount(actionItemsData.length);
+      }
 
     } catch (error: any) {
       console.error('Error fetching design log data:', error);
@@ -214,82 +237,82 @@ const DesignLog = () => {
           </p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4">
+        {/* Top Module Cards - Interactive Navigation */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 group" onClick={() => setActiveTab('entries')}>
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-600">Total Entries</p>
-                  <p className="text-2xl font-bold text-slate-900">{entries.length}</p>
+                  <p className="text-sm text-slate-600 group-hover:text-slate-700 transition-colors">🗂 Total Entries</p>
+                  <p className="text-3xl font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{entries.length}</p>
+                  <p className="text-xs text-slate-500 mt-1">Processed meetings & documents</p>
                 </div>
-                <FileText className="h-8 w-8 text-slate-400" />
+                <FileText className="h-10 w-10 text-slate-400 group-hover:text-blue-500 transition-colors" />
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
+          
+          <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 group" onClick={() => setActiveTab('questions')}>
+            <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-600">Owner Requirements</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {entries.filter(e => e.type === 'Owner Requirement').length}
-                  </p>
-                </div>
-                <MessageSquareText className="h-8 w-8 text-blue-400" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600">Design Decisions</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {entries.filter(e => e.type === 'Design Decision').length}
-                  </p>
-                </div>
-                <CheckCircle className="h-8 w-8 text-green-400" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-slate-600">Open Questions</p>
-                  <p className="text-2xl font-bold text-amber-600">
+                  <p className="text-sm text-slate-600 group-hover:text-slate-700 transition-colors">❓ Open Questions</p>
+                  <p className="text-3xl font-bold text-amber-600 group-hover:text-amber-700 transition-colors">
                     {entries.filter(e => e.type === 'Open Question').length}
                   </p>
+                  <p className="text-xs text-slate-500 mt-1">Unresolved project questions</p>
                 </div>
-                <AlertCircle className="h-8 w-8 text-amber-400" />
+                <AlertCircle className="h-10 w-10 text-amber-400 group-hover:text-amber-500 transition-colors" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 group" onClick={() => setActiveTab('actions')}>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600 group-hover:text-slate-700 transition-colors">✅ Action Items</p>
+                  <p className="text-3xl font-bold text-green-600 group-hover:text-green-700 transition-colors">
+                    {actionItemsCount}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Tasks and follow-ups</p>
+                </div>
+                <ListTodo className="h-10 w-10 text-green-400 group-hover:text-green-500 transition-colors" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Main Tabs */}
-        <Tabs defaultValue="designlog" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-8">
-            <TabsTrigger value="designlog" className="flex items-center gap-2">
+        {/* Interactive Tab Navigation */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-3 mb-8 bg-slate-50 p-1 rounded-xl">
+            <TabsTrigger 
+              value="entries" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 hover:bg-white/50"
+            >
               <FileText className="h-4 w-4" />
-              DesignLog
+              <span className="hidden sm:inline">Total Entries</span>
+              <span className="sm:hidden">Entries</span>
             </TabsTrigger>
-            <TabsTrigger value="minutes" className="flex items-center gap-2">
-              <MessageSquareText className="h-4 w-4" />
-              Meeting Minutes
+            <TabsTrigger 
+              value="questions" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 hover:bg-white/50"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Open Questions</span>
+              <span className="sm:hidden">Questions</span>
             </TabsTrigger>
-            <TabsTrigger value="actions" className="flex items-center gap-2">
+            <TabsTrigger 
+              value="actions" 
+              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 hover:bg-white/50"
+            >
               <ListTodo className="h-4 w-4" />
-              Action Items
-            </TabsTrigger>
-            <TabsTrigger value="portal" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Owner Portal
+              <span className="hidden sm:inline">Action Items</span>
+              <span className="sm:hidden">Actions</span>
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="designlog" className="space-y-8">
+          <TabsContent value="entries" className="space-y-8 animate-fade-in">
             {/* Project Memory Chat - Combined AI Experience */}
             <ProjectMemoryChat projectId={projectId!} />
 
@@ -335,120 +358,280 @@ const DesignLog = () => {
             </Card>
 
             {/* Entries List */}
-            <div className="space-y-4">
-              {filteredEntries.length === 0 ? (
-                <Card>
+            <div className="space-y-6">
+              {!hasUploadedFiles && entries.length === 0 ? (
+                <Card className="border-2 border-dashed border-slate-200 hover:border-slate-300 transition-colors">
                   <CardContent className="p-8 text-center">
                     <FileText className="h-12 w-12 mx-auto mb-4 text-slate-400" />
-                    <h3 className="text-lg font-medium text-slate-900 mb-2">No entries found</h3>
-                    <p className="text-slate-600 mb-4">
-                      Upload documents to extract design decisions, requirements, and questions
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">Ready to get started?</h3>
+                    <p className="text-slate-600 mb-6">
+                      Upload your first meeting recording or document to automatically extract design decisions, requirements, and questions.
                     </p>
-                    <Button onClick={() => setShowUpload(true)}>
-                      Upload Your First Document
-                    </Button>
+                    <div className="space-y-3">
+                      <Button onClick={() => setShowUpload(true)} className="bg-gradient-to-r from-blue-600 to-blue-800">
+                        Upload Your First Document
+                      </Button>
+                      <p className="text-xs text-slate-500">
+                        Supports audio files (.mp3, .m4a, .wav) and documents (.pdf, .docx, .txt)
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : hasUploadedFiles && filteredEntries.length === 0 ? (
+                <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+                  <CardContent className="p-8 text-center">
+                    <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+                      <CheckCircle className="h-8 w-8 text-green-600" />
+                    </div>
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">🎉 Great! Your files are uploaded</h3>
+                    <p className="text-slate-600 mb-6">
+                      Your documents have been processed successfully. Switch between tabs above to explore your content, or ask the AI a question.
+                    </p>
+                    <div className="space-y-3">
+                      <Button 
+                        onClick={() => setShowUpload(true)} 
+                        variant="outline"
+                        className="border-green-300 text-green-700 hover:bg-green-100"
+                      >
+                        Upload Another File
+                      </Button>
+                      <p className="text-xs text-slate-500">
+                        Try asking: "What decisions were made about the lobby design?"
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
               ) : (
-                filteredEntries.map((entry) => (
-                  <Card key={entry.id} className="hover:shadow-md transition-shadow" data-entry-id={entry.id}>
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg border ${getTypeColor(entry.type)}`}>
-                            {getTypeIcon(entry.type)}
-                          </div>
-                          <div>
-                            <Badge variant="outline" className="mb-1">
-                              {entry.type}
-                            </Badge>
-                            <div className="flex items-center gap-2 text-sm text-slate-500">
-                              {entry.date && (
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3" />
-                                  {new Date(entry.date).toLocaleDateString()}
-                                </div>
-                              )}
-                              {entry.meeting_event && (
-                                <span>• {entry.meeting_event}</span>
-                              )}
-                              {entry.uploaded_files && (
-                                <span>• From: {entry.uploaded_files.file_name}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <Badge variant={entry.status === 'active' ? 'default' : 'secondary'}>
-                          {entry.status}
-                        </Badge>
-                      </div>
-
-                      <h3 className="font-semibold text-slate-900 mb-2">{entry.summary}</h3>
-                      
-                      {entry.rationale && (
-                        <p className="text-slate-600 mb-3">{entry.rationale}</p>
-                      )}
-
-                       {entry.tags.length > 0 && (
-                         <div className="flex items-center gap-2 mb-4">
-                           <Tag className="h-3 w-3 text-slate-400" />
-                           <div className="flex flex-wrap gap-1">
-                             {entry.tags.map((tag, index) => (
-                               <Badge key={index} variant="outline" className="text-xs">
-                                 {tag}
-                               </Badge>
-                             ))}
+                 filteredEntries.map((entry) => (
+                   <Card key={entry.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.01]" data-entry-id={entry.id}>
+                     <CardContent className="px-6 py-4">
+                       <div className="flex items-start justify-between mb-4">
+                         <div className="flex items-center gap-3">
+                           <div className={`p-2 rounded-xl border ${getTypeColor(entry.type)} shadow-sm`}>
+                             {getTypeIcon(entry.type)}
+                           </div>
+                           <div>
+                             <Badge variant="outline" className="mb-2 font-medium">
+                               {entry.type}
+                             </Badge>
+                             <div className="flex items-center gap-2 text-sm text-slate-500">
+                               {entry.date && (
+                                 <div className="flex items-center gap-1">
+                                   <Calendar className="h-3 w-3" />
+                                   {new Date(entry.date).toLocaleDateString()}
+                                 </div>
+                               )}
+                               {entry.meeting_event && (
+                                 <span>• {entry.meeting_event}</span>
+                               )}
+                               {entry.uploaded_files && (
+                                 <span className="text-blue-600">• From: {entry.uploaded_files.file_name}</span>
+                               )}
+                             </div>
                            </div>
                          </div>
+                         <Badge variant={entry.status === 'active' ? 'default' : 'secondary'}>
+                           {entry.status}
+                         </Badge>
+                       </div>
+
+                       <h3 className="text-lg font-semibold text-slate-900 mb-3 leading-tight">{entry.summary}</h3>
+                       
+                       {entry.rationale && (
+                         <p className="text-slate-600 mb-4 leading-relaxed">{entry.rationale}</p>
                        )}
-                     </CardContent>
-                  </Card>
-                ))
+
+                        {entry.tags.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <Tag className="h-3 w-3 text-slate-400" />
+                            <div className="flex flex-wrap gap-1">
+                              {entry.tags.map((tag, index) => (
+                                <Badge key={index} variant="outline" className="text-xs bg-slate-50">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                   </Card>
+                 ))
               )}
             </div>
           </TabsContent>
 
-          <TabsContent value="minutes">
-            <MeetingMinutes 
-              projectId={projectId!} 
-              userRole={userRole}
-              onNavigateToEntry={(entryId) => {
-                // Switch to designlog tab and scroll to entry
-                const tabsTrigger = document.querySelector('[value="designlog"]') as HTMLElement;
-                if (tabsTrigger) {
-                  tabsTrigger.click();
-                  setTimeout(() => {
-                    const entryElement = document.querySelector(`[data-entry-id="${entryId}"]`);
-                    if (entryElement) {
-                      entryElement.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }, 100);
-                }
-              }}
-            />
+          <TabsContent value="questions" className="space-y-6 animate-fade-in">
+            {/* Project Memory Chat for Questions */}
+            <ProjectMemoryChat projectId={projectId!} />
+            
+            {/* Questions Filter */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search open questions..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Open Questions List */}
+            <div className="space-y-4">
+              {entries.filter(e => e.type === 'Open Question').length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-400" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No open questions yet</h3>
+                    <p className="text-slate-600 mb-4">
+                      Questions will appear here automatically when extracted from uploaded documents
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                entries
+                  .filter(e => e.type === 'Open Question')
+                  .filter(entry =>
+                    !searchTerm || 
+                    entry.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    entry.rationale?.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                  .map((entry) => (
+                    <Card key={entry.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-amber-400">
+                      <CardContent className="px-6 py-4">
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl border bg-amber-50 text-amber-600 border-amber-200 shadow-sm">
+                              <AlertCircle className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <Badge variant="outline" className="mb-2 border-amber-300 text-amber-700">
+                                Open Question
+                              </Badge>
+                              <div className="flex items-center gap-2 text-sm text-slate-500">
+                                {entry.date && (
+                                  <div className="flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {new Date(entry.date).toLocaleDateString()}
+                                  </div>
+                                )}
+                                {entry.uploaded_files && (
+                                  <span className="text-blue-600">• From: {entry.uploaded_files.file_name}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <Badge variant={entry.status === 'active' ? 'default' : 'secondary'}>
+                            {entry.status}
+                          </Badge>
+                        </div>
+
+                        <h3 className="text-lg font-semibold text-slate-900 mb-3">{entry.summary}</h3>
+                        
+                        {entry.rationale && (
+                          <p className="text-slate-600 mb-4">{entry.rationale}</p>
+                        )}
+
+                        {entry.tags.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <Tag className="h-3 w-3 text-slate-400" />
+                            <div className="flex flex-wrap gap-1">
+                              {entry.tags.map((tag, index) => (
+                                <Badge key={index} variant="outline" className="text-xs bg-amber-50">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))
+              )}
+            </div>
           </TabsContent>
 
-          <TabsContent value="actions">
+          <TabsContent value="actions" className="animate-fade-in">
             <ActionItemsManager projectId={projectId!} />
           </TabsContent>
-
-          <TabsContent value="portal">
-            <OwnerPortal projectId={projectId!} currentUserRole="architect" />
-          </TabsContent>
         </Tabs>
-      </main>
 
-      {/* Upload Modal */}
-      {showUpload && (
-        <DesignLogUpload
-          projectId={projectId!}
-          onClose={() => setShowUpload(false)}
-          onUploadComplete={() => {
-            setShowUpload(false);
-            fetchData();
-          }}
-        />
-      )}
+        {/* Legacy Tabs - Moved to Sidebar/Dropdown */}
+        <div className="mt-12 border-t pt-8">
+          <details className="group">
+            <summary className="flex items-center justify-between w-full px-4 py-3 text-left text-sm font-medium text-slate-700 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors">
+              <span className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Additional Views
+              </span>
+              <span className="text-xs text-slate-500 group-open:hidden">Click to expand</span>
+              <span className="text-xs text-slate-500 hidden group-open:inline">Click to collapse</span>
+            </summary>
+            <div className="mt-4 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquareText className="h-5 w-5" />
+                    Meeting Minutes
+                  </CardTitle>
+                  <CardDescription>AI-generated summaries of project discussions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <MeetingMinutes 
+                    projectId={projectId!} 
+                    userRole={userRole}
+                    onNavigateToEntry={(entryId) => {
+                      setActiveTab('entries');
+                      setTimeout(() => {
+                        const entryElement = document.querySelector(`[data-entry-id="${entryId}"]`);
+                        if (entryElement) {
+                          entryElement.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      }, 100);
+                    }}
+                  />
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Owner Portal
+                  </CardTitle>
+                  <CardDescription>Collaborate with project stakeholders</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <OwnerPortal projectId={projectId!} currentUserRole={userRole} />
+                </CardContent>
+              </Card>
+            </div>
+          </details>
+        </div>
+
+        {/* Upload Dialog */}
+        {showUpload && (
+          <Dialog open={showUpload} onOpenChange={setShowUpload}>
+            <DialogContent className="max-w-4xl">
+              <DesignLogUpload 
+                projectId={projectId!} 
+                onClose={() => setShowUpload(false)}
+                onUploadComplete={() => {
+                  fetchData();
+                  setShowUpload(false);
+                }}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
+      </main>
     </div>
   );
 };

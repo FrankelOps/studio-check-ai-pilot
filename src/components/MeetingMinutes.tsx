@@ -247,33 +247,36 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
           <h2 className="text-2xl font-bold text-slate-900">Meeting Minutes</h2>
           <p className="text-slate-600">AI-generated summaries of project discussions</p>
         </div>
-        <Badge variant="outline" className="text-slate-600">
+        <Badge variant="outline" className="px-3 py-1 text-sm bg-slate-50 text-slate-700 border-slate-200">
           {meetingMinutes.length} meeting{meetingMinutes.length !== 1 ? 's' : ''}
         </Badge>
       </div>
 
       <div className="space-y-4">
         {meetingMinutes.map((minute) => (
-          <Card key={minute.id} className="hover:shadow-md transition-shadow">
+          <Card key={minute.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.01] rounded-xl">
             <CardHeader className="pb-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <CardTitle className="text-lg text-slate-900 mb-2">
+                  <CardTitle className="text-xl font-bold text-slate-900 mb-3">
                     {minute.meeting_title}
                   </CardTitle>
-                   <div className="flex items-center gap-4 text-sm text-slate-500">
+                   <div className="flex items-center gap-4 text-sm text-slate-500 mb-3">
                      <div className="flex items-center gap-1">
                        <Calendar className="h-4 w-4" />
-                       {new Date(minute.meeting_date).toLocaleDateString()}
+                       <span className="font-medium">{new Date(minute.meeting_date).toLocaleDateString()}</span>
                      </div>
                      {minute.uploaded_files && (
-                       <span>• From: {minute.uploaded_files.file_name}</span>
+                       <span className="text-blue-600">• From: {minute.uploaded_files.file_name}</span>
                      )}
                      {minute.has_transcript && (
-                       <Badge variant="secondary" className="ml-2">
-                         Transcript Available
+                       <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                         ✓ Transcript Available
                        </Badge>
                       )}
+                    </div>
+                    <div className="text-xs text-slate-500 mb-3">
+                      Uploaded by <span className="font-medium">Project Team</span> on {new Date(minute.created_at).toLocaleDateString()}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -282,7 +285,7 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
                         variant="outline"
                         size="sm"
                         onClick={() => handleViewTranscript(minute)}
-                        className="flex items-center gap-1"
+                        className="flex items-center gap-1 border-slate-300 hover:bg-slate-100"
                       >
                         <Eye className="h-4 w-4" />
                         View Transcript
@@ -312,14 +315,36 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
                   </div>
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 px-6 pb-6">
               <div className="prose prose-sm max-w-none">
-                <div className="text-slate-700 whitespace-pre-line leading-relaxed space-y-1">
-                  {highlightDesignLogReferences(minute.summary_outline, minute.file_id)}
+                <div className="text-slate-700 leading-relaxed space-y-4">
+                  {minute.summary_outline.split('\n').map((section, index) => {
+                    // Check if this is a section header (usually contains keywords like ":")
+                    const isHeader = section.includes(':') && section.length < 100;
+                    
+                    if (isHeader) {
+                      return (
+                        <div key={index} className="mt-6 first:mt-0">
+                          <h3 className="text-lg font-semibold text-slate-900 mb-2 border-b border-slate-200 pb-1">
+                            {section}
+                          </h3>
+                        </div>
+                      );
+                    } else if (section.trim().length > 0) {
+                      return (
+                        <div key={index} className="ml-0">
+                          <p className="text-slate-700 leading-relaxed">
+                            {section}
+                          </p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
                 </div>
               </div>
               {designLogEntries.filter(entry => entry.file_id === minute.file_id).length > 0 && (
-                <div className="mt-4 pt-4 border-t border-slate-200">
+                <div className="mt-6 pt-4 border-t border-slate-200">
                   <p className="text-xs text-slate-500 flex items-center gap-1">
                     <ExternalLink className="h-3 w-3" />
                     Highlighted items link to corresponding DesignLog entries

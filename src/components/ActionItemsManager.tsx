@@ -93,21 +93,21 @@ export function ActionItemsManager({ projectId, className }: ActionItemsManagerP
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'urgent': return 'bg-red-100 text-red-800';
-      case 'high': return 'bg-orange-100 text-orange-800';
-      case 'medium': return 'bg-yellow-100 text-yellow-800';
-      case 'low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'urgent': return 'bg-red-50 text-red-700 border border-red-200';
+      case 'high': return 'bg-orange-50 text-orange-700 border border-orange-200';
+      case 'medium': return 'bg-amber-50 text-amber-700 border border-amber-200';
+      case 'low': return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+      default: return 'bg-slate-50 text-slate-700 border border-slate-200';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      case 'cancelled': return 'bg-gray-100 text-gray-800';
-      case 'open': return 'bg-amber-100 text-amber-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'completed': return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+      case 'in_progress': return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'cancelled': return 'bg-slate-50 text-slate-700 border border-slate-200';
+      case 'open': return 'bg-amber-50 text-amber-700 border border-amber-200';
+      default: return 'bg-slate-50 text-slate-700 border border-slate-200';
     }
   };
 
@@ -129,6 +129,14 @@ export function ActionItemsManager({ projectId, className }: ActionItemsManagerP
     return new Date(dueDate) < new Date();
   };
 
+  const getDaysOverdue = (dueDate: string | null) => {
+    if (!dueDate) return 0;
+    const today = new Date();
+    const due = new Date(dueDate);
+    const diffTime = today.getTime() - due.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
   if (loading) {
     return <div className="p-6">Loading action items...</div>;
   }
@@ -137,15 +145,18 @@ export function ActionItemsManager({ projectId, className }: ActionItemsManagerP
     <div className={className}>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">Action Items</h3>
-          <p className="text-sm text-slate-600">Track and manage project tasks and follow-ups</p>
+          <h3 className="text-2xl font-bold text-slate-900">Action Items</h3>
+          <p className="text-slate-600">Track and manage project tasks and follow-ups</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="px-3 py-1">
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="px-3 py-1 text-sm">
             {actionItems.length} Total
           </Badge>
-          <Badge variant="outline" className="px-3 py-1">
+          <Badge variant="outline" className="px-3 py-1 text-sm bg-amber-50 text-amber-700 border-amber-200">
             {filterByStatus('open').length} Open
+          </Badge>
+          <Badge variant="outline" className="px-3 py-1 text-sm bg-emerald-50 text-emerald-700 border-emerald-200">
+            {filterByStatus('completed').length} Completed
           </Badge>
         </div>
       </div>
@@ -266,69 +277,117 @@ function ActionItemCard({
   getStatusIcon,
   isOverdue 
 }: ActionItemCardProps) {
+  const getDaysOverdue = (dueDate: string) => {
+    const today = new Date();
+    const due = new Date(dueDate);
+    const diffTime = today.getTime() - due.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="space-y-2 flex-1">
+    <Card className="rounded-xl shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.01]">
+      <CardContent className="px-6 py-4">
+        <div className="flex items-start justify-between mb-4">
+          <div className="space-y-3 flex-1">
             <div className="flex items-center gap-2">
-              <Badge className={getPriorityColor(item.priority)}>
-                {item.priority}
+              <Badge className={`${getPriorityColor(item.priority)} font-medium`}>
+                {item.priority.toUpperCase()}
               </Badge>
-              <Badge className={getStatusColor(item.status)}>
+              <Badge className={`${getStatusColor(item.status)} font-medium`}>
                 {getStatusIcon(item.status)}
-                {item.status.replace('_', ' ')}
+                <span className="ml-1">{item.status.replace('_', ' ')}</span>
               </Badge>
               {item.due_date && isOverdue(item.due_date) && item.status !== 'completed' && (
-                <Badge className="bg-red-100 text-red-800">
-                  Overdue
+                <Badge className="bg-red-50 text-red-700 border border-red-200 font-medium">
+                  Overdue • {getDaysOverdue(item.due_date)} days
                 </Badge>
               )}
             </div>
-            <CardTitle className="text-base">{item.description}</CardTitle>
+            <h3 className="text-lg font-semibold text-slate-900 leading-tight">{item.description}</h3>
           </div>
-          <Select 
-            value={item.status} 
-            onValueChange={(status) => onStatusUpdate(item.id, status)}
-          >
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          
+          <div className="flex items-center gap-3">
+            {/* Checkbox for completion */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onStatusUpdate(item.id, item.status === 'completed' ? 'open' : 'completed')}
+              className={`h-8 w-8 rounded-full p-0 ${
+                item.status === 'completed' 
+                  ? 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200' 
+                  : 'hover:bg-slate-100'
+              }`}
+            >
+              <CheckCircle className={`h-4 w-4 ${item.status === 'completed' ? 'fill-current' : ''}`} />
+            </Button>
+            
+            <Select 
+              value={item.status} 
+              onValueChange={(status) => onStatusUpdate(item.id, status)}
+            >
+              <SelectTrigger className="w-36 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </CardHeader>
-      
-      <CardContent>
-        <div className="space-y-2">
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           {item.assigned_to_name && (
-            <div className="flex items-center text-sm text-slate-600">
-              <User className="h-4 w-4 mr-2" />
-              Assigned to: {item.assigned_to_name}
+            <div className="flex items-center text-slate-600">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                <User className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Assigned to</p>
+                <p className="font-medium">{item.assigned_to_name}</p>
+              </div>
             </div>
           )}
           
           {item.due_date && (
-            <div className="flex items-center text-sm text-slate-600">
-              <Calendar className="h-4 w-4 mr-2" />
-              Due: {new Date(item.due_date).toLocaleDateString()}
-              {isOverdue(item.due_date) && item.status !== 'completed' && (
-                <span className="ml-2 text-red-600 font-medium">
-                  ({Math.ceil((new Date().getTime() - new Date(item.due_date).getTime()) / (1000 * 60 * 60 * 24))} days overdue)
-                </span>
-              )}
+            <div className="flex items-center text-slate-600">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                isOverdue(item.due_date) && item.status !== 'completed' 
+                  ? 'bg-red-100' 
+                  : 'bg-slate-100'
+              }`}>
+                <Calendar className={`h-4 w-4 ${
+                  isOverdue(item.due_date) && item.status !== 'completed' 
+                    ? 'text-red-600' 
+                    : 'text-slate-600'
+                }`} />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Due date</p>
+                <p className={`font-medium ${
+                  isOverdue(item.due_date) && item.status !== 'completed' 
+                    ? 'text-red-600' 
+                    : ''
+                }`}>
+                  {new Date(item.due_date).toLocaleDateString()}
+                </p>
+              </div>
             </div>
           )}
 
           {item.completed_at && (
-            <div className="flex items-center text-sm text-green-600">
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Completed: {new Date(item.completed_at).toLocaleDateString()}
+            <div className="flex items-center text-slate-600">
+              <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center mr-3">
+                <CheckCircle className="h-4 w-4 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Completed</p>
+                <p className="font-medium text-emerald-600">
+                  {new Date(item.completed_at).toLocaleDateString()}
+                </p>
+              </div>
             </div>
           )}
         </div>
