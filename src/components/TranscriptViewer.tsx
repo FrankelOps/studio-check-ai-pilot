@@ -57,6 +57,7 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
     
     setIsFormatting(true);
     try {
+      console.log('Formatting transcript with enhanced speaker attribution...');
       const { data, error } = await supabase.functions.invoke('format-transcript', {
         body: {
           speakerSegments: speakerSegments || null,
@@ -66,7 +67,33 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
 
       if (error) throw error;
       
-      setFormattedTranscript(data.formattedTranscript);
+      // Validate and clean the formatted transcript
+      let cleanedTranscript = data.formattedTranscript;
+      
+      // Ensure every speaker block has proper formatting
+      if (cleanedTranscript) {
+        // Validate timestamp format and fix if needed
+        cleanedTranscript = cleanedTranscript.replace(
+          /\[([^,\]]+),?\s*([^\]]*)\]:\s*/g, 
+          (match, speaker, timestamp) => {
+            // Ensure timestamp is in MM:SS format
+            if (!timestamp || !timestamp.match(/^\d{1,2}:\d{2}$/)) {
+              // If no valid timestamp, use placeholder
+              timestamp = '00:00';
+            }
+            return `[${speaker.trim()}, ${timestamp}]:\n`;
+          }
+        );
+        
+        // Ensure proper spacing between blocks
+        cleanedTranscript = cleanedTranscript
+          .replace(/\n{3,}/g, '\n\n') // Max 2 line breaks
+          .replace(/\]\:\n([^\n])/g, ']:\n$1') // Ensure newline after speaker label
+          .trim();
+      }
+      
+      setFormattedTranscript(cleanedTranscript);
+      console.log('Transcript formatting completed successfully');
     } catch (error) {
       console.error('Failed to format transcript:', error);
       // Fallback to basic formatting if GPT fails
@@ -174,9 +201,21 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
     
     return (
       <div className="space-y-6">
-        <p className="text-sm text-muted-foreground mb-4">
-          AI-formatted transcript with enhanced readability and speaker editing
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            AI-formatted transcript with enhanced speaker attribution and editing
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={formatTranscriptWithGPT}
+            disabled={isFormatting}
+            className="flex items-center gap-1"
+          >
+            <FileText className="h-3 w-3" />
+            Re-format
+          </Button>
+        </div>
         
         {blocks.map((block, blockIndex) => {
           const lowerBlock = block.toLowerCase();
