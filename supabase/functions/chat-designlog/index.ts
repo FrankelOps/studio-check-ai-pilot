@@ -121,29 +121,34 @@ Created: ${new Date(entry.created_at).toLocaleDateString()}
     // Also try keyword search as fallback if embeddings don't return good results
     let keywordSearchResults: any[] = [];
     if (similarContent?.length === 0 || !similarContent) {
-      // First try with design_logs join if available
-      const { data: keywordData, error: keywordError } = await supabase
-        .from('meeting_minutes')
-        .select('meeting_title, meeting_date, transcript_text, design_logs!inner(id, project_id)')
-        .eq('design_logs.project_id', projectId)
-        .textSearch('transcript_text', question.replace(/[^a-zA-Z0-9\s]/g, ''))
-        .not('transcript_text', 'is', null)
-        .limit(3);
+      console.log('No embeddings found, trying keyword search...');
       
-      if (!keywordError && keywordData && keywordData.length > 0) {
-        keywordSearchResults = keywordData;
-      } else {
-        // Fallback: Search meeting_minutes directly by project_id if no design_logs exist
-        const { data: directKeywordData, error: directKeywordError } = await supabase
-          .from('meeting_minutes')
-          .select('meeting_title, meeting_date, transcript_text')
-          .eq('project_id', projectId)
-          .textSearch('transcript_text', question.replace(/[^a-zA-Z0-9\s]/g, ''))
-          .not('transcript_text', 'is', null)
-          .limit(3);
+      // Try simple keyword search on meeting minutes directly (avoid textSearch which can fail)
+      const keywords = question.toLowerCase().split(' ').filter(word => word.length > 2);
+      console.log('Search keywords:', keywords);
+      
+      const { data: directKeywordData, error: directKeywordError } = await supabase
+        .from('meeting_minutes')
+        .select('meeting_title, meeting_date, transcript_text')
+        .eq('project_id', projectId)
+        .not('transcript_text', 'is', null)
+        .limit(5);
+      
+      console.log('Direct search results:', directKeywordData?.length || 0, 'records found');
+      
+      if (!directKeywordError && directKeywordData && directKeywordData.length > 0) {
+        // Filter results that contain any of our keywords
+        keywordSearchResults = directKeywordData.filter(result => {
+          const transcriptLower = result.transcript_text.toLowerCase();
+          return keywords.some(keyword => transcriptLower.includes(keyword));
+        });
         
-        if (!directKeywordError && directKeywordData) {
+        console.log('Filtered keyword results:', keywordSearchResults.length);
+        
+        // If no keyword matches, just return all transcripts for this project
+        if (keywordSearchResults.length === 0) {
           keywordSearchResults = directKeywordData;
+          console.log('No keyword matches, returning all transcripts');
         }
       }
     }
