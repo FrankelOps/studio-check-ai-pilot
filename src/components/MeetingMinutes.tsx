@@ -13,6 +13,9 @@ interface MeetingMinute {
   summary_outline: string;
   created_at: string;
   file_id: string;
+  transcript_text?: string;
+  has_transcript: boolean;
+  speaker_segments?: Record<string, any>;
   uploaded_files?: {
     file_name: string;
   };
@@ -36,6 +39,17 @@ export function MeetingMinutes({ projectId, userRole, onNavigateToEntry }: Meeti
   const [designLogEntries, setDesignLogEntries] = useState<DesignLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [transcriptViewer, setTranscriptViewer] = useState<{
+    isOpen: boolean;
+    title: string;
+    date?: string;
+    transcript: string;
+    speakerSegments?: any[];
+  }>({
+    isOpen: false,
+    title: "",
+    transcript: "",
+  });
   const { toast } = useToast();
 
   const fetchData = async () => {

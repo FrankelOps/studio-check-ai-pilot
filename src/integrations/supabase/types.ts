@@ -221,10 +221,12 @@ export type Database = {
         Row: {
           created_at: string
           file_id: string
+          has_transcript: boolean | null
           id: string
           meeting_date: string
           meeting_title: string
           project_id: string
+          speaker_segments: Json | null
           summary_outline: string
           transcript_text: string | null
           updated_at: string
@@ -232,10 +234,12 @@ export type Database = {
         Insert: {
           created_at?: string
           file_id: string
+          has_transcript?: boolean | null
           id?: string
           meeting_date: string
           meeting_title: string
           project_id: string
+          speaker_segments?: Json | null
           summary_outline: string
           transcript_text?: string | null
           updated_at?: string
@@ -243,10 +247,12 @@ export type Database = {
         Update: {
           created_at?: string
           file_id?: string
+          has_transcript?: boolean | null
           id?: string
           meeting_date?: string
           meeting_title?: string
           project_id?: string
+          speaker_segments?: Json | null
           summary_outline?: string
           transcript_text?: string | null
           updated_at?: string
@@ -403,7 +409,10 @@ export type Database = {
           created_at: string
           design_log_id: string
           embedding: string | null
+          end_timestamp: number | null
           id: string
+          speaker_name: string | null
+          start_timestamp: number | null
           updated_at: string
         }
         Insert: {
@@ -412,7 +421,10 @@ export type Database = {
           created_at?: string
           design_log_id: string
           embedding?: string | null
+          end_timestamp?: number | null
           id?: string
+          speaker_name?: string | null
+          start_timestamp?: number | null
           updated_at?: string
         }
         Update: {
@@ -421,7 +433,10 @@ export type Database = {
           created_at?: string
           design_log_id?: string
           embedding?: string | null
+          end_timestamp?: number | null
           id?: string
+          speaker_name?: string | null
+          start_timestamp?: number | null
           updated_at?: string
         }
         Relationships: [
