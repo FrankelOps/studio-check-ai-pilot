@@ -1,11 +1,12 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Search, Clock, User, Copy, Check, FileText, Code } from "lucide-react";
+import { Search, Clock, User, Copy, Check, FileText, Code, Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SpeakerSegment {
   speaker: string;
@@ -34,17 +35,50 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [copied, setCopied] = useState(false);
   const [isCleanView, setIsCleanView] = useState(true);
+  const [formattedTranscript, setFormattedTranscript] = useState<string>("");
+  const [isFormatting, setIsFormatting] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const handleCopyTranscript = async () => {
     try {
-      await navigator.clipboard.writeText(transcript);
+      const textToCopy = isCleanView && formattedTranscript ? formattedTranscript : transcript;
+      await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy transcript:', err);
     }
   };
+
+  const formatTranscriptWithGPT = async () => {
+    if (!transcript && (!speakerSegments || speakerSegments.length === 0)) return;
+    
+    setIsFormatting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('format-transcript', {
+        body: {
+          speakerSegments: speakerSegments || null,
+          transcriptText: transcript || ""
+        }
+      });
+
+      if (error) throw error;
+      
+      setFormattedTranscript(data.formattedTranscript);
+    } catch (error) {
+      console.error('Failed to format transcript:', error);
+      // Fallback to basic formatting if GPT fails
+      setFormattedTranscript(transcript);
+    } finally {
+      setIsFormatting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && isCleanView && !formattedTranscript && !isFormatting) {
+      formatTranscriptWithGPT();
+    }
+  }, [isOpen, isCleanView, transcript, speakerSegments]);
 
   const handleToggleView = () => {
     // Preserve scroll position
@@ -82,60 +116,53 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   };
 
   const renderCleanView = () => {
-    if (speakerSegments && speakerSegments.length > 0) {
-      // Group segments into paragraphs and add speaker labels
-      const filteredSegments = speakerSegments.filter(segment => 
-        !searchTerm || 
-        segment.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        segment.speaker.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-
+    if (isFormatting) {
       return (
-        <div className="space-y-6">
-          <p className="text-sm text-muted-foreground mb-4">
-            Formatted transcript with enhanced readability
-          </p>
-          {filteredSegments.map((segment, index) => (
-            <div key={index} className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="flex items-center gap-1 bg-primary/5">
-                  <User className="h-3 w-3" />
-                  {segment.speaker}
-                </Badge>
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs">
-                  <Clock className="h-3 w-3" />
-                  {segment.start_time}
-                </Badge>
-              </div>
-              <div className="pl-4 border-l-2 border-primary/10">
-                <p className="text-base leading-relaxed text-foreground">
-                  {highlightText(segment.text.trim() + (segment.text.trim().match(/[.!?]$/) ? '' : '.'), searchTerm)}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    } else {
-      // Format plain transcript into paragraphs
-      const paragraphs = formatCleanTranscript(transcript);
-      const filteredParagraphs = paragraphs.filter(p => 
-        !searchTerm || p.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-
-      return (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground mb-4">
-            Formatted transcript with enhanced readability
-          </p>
-          {filteredParagraphs.map((paragraph, index) => (
-            <p key={index} className="text-base leading-relaxed text-foreground mb-4">
-              {highlightText(paragraph, searchTerm)}
-            </p>
-          ))}
+        <div className="flex items-center justify-center py-8 space-x-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm text-muted-foreground">Formatting transcript for readability...</span>
         </div>
       );
     }
+
+    if (!formattedTranscript) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground mb-4">
+            No formatted transcript available
+          </p>
+          <Button 
+            variant="outline" 
+            onClick={formatTranscriptWithGPT}
+            className="flex items-center gap-2"
+          >
+            <FileText className="h-4 w-4" />
+            Format Transcript
+          </Button>
+        </div>
+      );
+    }
+
+    // Filter formatted transcript by search term
+    const filteredText = !searchTerm 
+      ? formattedTranscript 
+      : formattedTranscript
+          .split('\n')
+          .filter(line => line.toLowerCase().includes(searchTerm.toLowerCase()))
+          .join('\n');
+
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground mb-4">
+          AI-formatted transcript with enhanced readability
+        </p>
+        <div className="prose prose-sm max-w-none dark:prose-invert">
+          <div className="whitespace-pre-wrap text-base leading-relaxed">
+            {highlightText(filteredText, searchTerm)}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const highlightText = (text: string, search: string) => {
