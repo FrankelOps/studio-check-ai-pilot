@@ -386,30 +386,6 @@ const DesignLog = () => {
                     </div>
                   </CardContent>
                 </Card>
-              ) : hasUploadedFiles && filteredEntries.length === 0 ? (
-                <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-                  <CardContent className="p-8 text-center">
-                    <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
-                      <CheckCircle className="h-8 w-8 text-green-600" />
-                    </div>
-                    <h3 className="text-lg font-medium text-slate-900 mb-2">🎉 Great! Your files are uploaded</h3>
-                    <p className="text-slate-600 mb-6">
-                      Your documents have been processed successfully. Switch between tabs above to explore your content, or ask the AI a question.
-                    </p>
-                    <div className="space-y-3">
-                      <Button 
-                        onClick={() => setShowUpload(true)} 
-                        variant="outline"
-                        className="border-green-300 text-green-700 hover:bg-green-100"
-                      >
-                        Upload Another File
-                      </Button>
-                      <p className="text-xs text-slate-500">
-                        Try asking: "What decisions were made about the lobby design?"
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
               ) : (
                  filteredEntries.map((entry) => (
                    <Card key={entry.id} className="hover:shadow-lg transition-all duration-200 hover:scale-[1.01]" data-entry-id={entry.id}>
