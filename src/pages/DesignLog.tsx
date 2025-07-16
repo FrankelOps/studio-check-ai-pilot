@@ -238,8 +238,13 @@ const DesignLog = () => {
         </div>
 
         {/* Top Module Cards - Interactive Navigation */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 group" onClick={() => setActiveTab('entries')}>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card 
+            className={`cursor-pointer hover:shadow-lg transition-all duration-200 group ${
+              activeTab === 'entries' ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+            }`} 
+            onClick={() => setActiveTab('entries')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -252,7 +257,12 @@ const DesignLog = () => {
             </CardContent>
           </Card>
           
-          <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 group" onClick={() => setActiveTab('questions')}>
+          <Card 
+            className={`cursor-pointer hover:shadow-lg transition-all duration-200 group ${
+              activeTab === 'questions' ? 'ring-2 ring-amber-500 bg-amber-50' : ''
+            }`} 
+            onClick={() => setActiveTab('questions')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -267,7 +277,12 @@ const DesignLog = () => {
             </CardContent>
           </Card>
           
-          <Card className="cursor-pointer hover:shadow-lg transition-all duration-200 group" onClick={() => setActiveTab('actions')}>
+          <Card 
+            className={`cursor-pointer hover:shadow-lg transition-all duration-200 group ${
+              activeTab === 'actions' ? 'ring-2 ring-green-500 bg-green-50' : ''
+            }`} 
+            onClick={() => setActiveTab('actions')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -281,36 +296,30 @@ const DesignLog = () => {
               </div>
             </CardContent>
           </Card>
+          
+          <Card 
+            className={`cursor-pointer hover:shadow-lg transition-all duration-200 group ${
+              activeTab === 'decisions' ? 'ring-2 ring-purple-500 bg-purple-50' : ''
+            }`} 
+            onClick={() => setActiveTab('decisions')}
+          >
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600 group-hover:text-slate-700 transition-colors">📋 Design Decisions</p>
+                  <p className="text-3xl font-bold text-purple-600 group-hover:text-purple-700 transition-colors">
+                    {entries.filter(e => e.type === 'Design Decision').length}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Key design choices</p>
+                </div>
+                <CheckCircle className="h-10 w-10 text-purple-400 group-hover:text-purple-500 transition-colors" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Interactive Tab Navigation */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8 bg-slate-50 p-1 rounded-xl">
-            <TabsTrigger 
-              value="entries" 
-              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 hover:bg-white/50"
-            >
-              <FileText className="h-4 w-4" />
-              <span className="hidden sm:inline">Total Entries</span>
-              <span className="sm:hidden">Entries</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="questions" 
-              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 hover:bg-white/50"
-            >
-              <AlertCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Open Questions</span>
-              <span className="sm:hidden">Questions</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="actions" 
-              className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all duration-200 hover:bg-white/50"
-            >
-              <ListTodo className="h-4 w-4" />
-              <span className="hidden sm:inline">Action Items</span>
-              <span className="sm:hidden">Actions</span>
-            </TabsTrigger>
-          </TabsList>
+        {/* Main Content Area */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">{/* Removed TabsList - using cards for navigation */}
 
           <TabsContent value="entries" className="space-y-8 animate-fade-in">
             {/* Project Memory Chat - Combined AI Experience */}
@@ -560,6 +569,105 @@ const DesignLog = () => {
 
           <TabsContent value="actions" className="animate-fade-in">
             <ActionItemsManager projectId={projectId!} />
+          </TabsContent>
+
+          <TabsContent value="decisions" className="space-y-6 animate-fade-in">
+            {/* Project Memory Chat for Design Decisions */}
+            <ProjectMemoryChat projectId={projectId!} />
+            
+            {/* Design Decisions Filter */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                      <Input
+                        placeholder="Search design decisions..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Design Decisions Table */}
+            <div className="space-y-4">
+              {entries.filter(e => e.type === 'Design Decision').length === 0 ? (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <CheckCircle className="h-12 w-12 mx-auto mb-4 text-purple-400" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No design decisions yet</h3>
+                    <p className="text-slate-600 mb-4">
+                      Design decisions will appear here automatically when extracted from uploaded documents
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-slate-200">
+                            <th className="text-left py-3 px-4 font-medium text-slate-700">Summary</th>
+                            <th className="text-left py-3 px-4 font-medium text-slate-700">Meeting Source</th>
+                            <th className="text-left py-3 px-4 font-medium text-slate-700">Date</th>
+                            <th className="text-left py-3 px-4 font-medium text-slate-700">Rationale</th>
+                            <th className="text-left py-3 px-4 font-medium text-slate-700">Tags</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {entries
+                            .filter(e => e.type === 'Design Decision')
+                            .filter(entry =>
+                              !searchTerm || 
+                              entry.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              entry.rationale?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              entry.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+                            )
+                            .map((entry) => (
+                              <tr key={entry.id} className="border-b border-slate-100 hover:bg-slate-50">
+                                <td className="py-4 px-4">
+                                  <div className="flex items-start gap-2">
+                                    <div className="p-1 rounded bg-purple-100 text-purple-600 mt-1">
+                                      <CheckCircle className="h-3 w-3" />
+                                    </div>
+                                    <span className="font-medium text-slate-900">{entry.summary}</span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-slate-600">
+                                  {entry.uploaded_files?.file_name || entry.meeting_event || 'N/A'}
+                                </td>
+                                <td className="py-4 px-4 text-slate-600">
+                                  {entry.date ? new Date(entry.date).toLocaleDateString() : 'N/A'}
+                                </td>
+                                <td className="py-4 px-4 text-slate-600 max-w-xs">
+                                  <div className="truncate" title={entry.rationale || ''}>
+                                    {entry.rationale || 'No rationale provided'}
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4">
+                                  <div className="flex flex-wrap gap-1">
+                                    {entry.tags.map((tag, index) => (
+                                      <Badge key={index} variant="outline" className="text-xs bg-purple-50 text-purple-700">
+                                        {tag}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
 

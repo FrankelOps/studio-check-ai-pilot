@@ -136,18 +136,13 @@ export function ProjectMemoryChat({ projectId }: ProjectMemoryChatProps) {
             Ask about any meeting, decision, or request — the AI will search your project history to find the answer.
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="py-3 px-4 space-y-3">
           {/* Chat Messages */}
-          <div className="max-h-64 overflow-y-auto space-y-3">
+          <div className="max-h-48 overflow-y-auto space-y-3">
             {messages.length === 0 ? (
-              <div className="text-center py-6 text-slate-500">
-                <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-50" />
-                <p className="text-sm mb-3">Ask questions about your design decisions</p>
-                <div className="space-y-1 text-xs text-slate-400">
-                  {exampleQuestions.map((example, index) => (
-                    <p key={index} className="italic">"{example}"</p>
-                  ))}
-                </div>
+              <div className="text-center py-3 text-slate-500">
+                <MessageSquare className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Ask questions about your design decisions</p>
               </div>
             ) : (
               messages.map((message, index) => (
@@ -184,12 +179,12 @@ export function ProjectMemoryChat({ projectId }: ProjectMemoryChatProps) {
           </div>
 
           {/* Input Form */}
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-2">
             <Textarea
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Ask about your project..."
-              className="min-h-[80px] resize-none"
+              className="min-h-[60px] resize-none"
               disabled={isLoading}
             />
             <Button
