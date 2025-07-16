@@ -20,11 +20,53 @@ serve(async (req) => {
 
     const { speakerSegments, transcriptText } = await req.json();
 
+    // Helper function to convert seconds to MM:SS format
+    const formatTimestamp = (seconds) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
     let prompt;
 
     if (speakerSegments && speakerSegments.length > 0) {
-      // Use speaker segments when available with enhanced attribution logic
-      prompt = `You are a transcript formatting assistant with expertise in speaker diarization and conversation flow analysis. Your job is to transform raw meeting transcripts into a clean, readable format using speaker segment data while applying intelligent corrections.
+      // Pre-process speaker segments to add formatted timestamps and merge consecutive segments
+      const processedSegments = [];
+      let currentSpeaker = null;
+      let currentBlock = null;
+
+      speakerSegments.forEach((segment, index) => {
+        const speaker = segment.speaker || `Speaker ${String.fromCharCode(65 + (index % 26))}`;
+        const startTime = parseFloat(segment.start_time) || 0;
+        const formattedTime = formatTimestamp(startTime);
+        
+        // Merge consecutive segments from same speaker
+        if (currentSpeaker === speaker && currentBlock) {
+          // Append text to current block
+          currentBlock.text += ' ' + (segment.text || '').trim();
+        } else {
+          // Save previous block if exists
+          if (currentBlock) {
+            processedSegments.push(currentBlock);
+          }
+          
+          // Start new block
+          currentBlock = {
+            speaker: speaker,
+            start_time: startTime,
+            formatted_time: formattedTime,
+            text: (segment.text || '').trim()
+          };
+          currentSpeaker = speaker;
+        }
+      });
+
+      // Add the last block
+      if (currentBlock) {
+        processedSegments.push(currentBlock);
+      }
+
+      prompt = `You are a transcript formatting assistant with expertise in speaker diarization and conversation flow analysis. Your job is to transform preprocessed speaker segments into a clean, readable format with intelligent speaker attribution corrections.
 
 CRITICAL FORMATTING RULES:
 
@@ -33,18 +75,18 @@ CRITICAL FORMATTING RULES:
    Complete sentences with proper punctuation...
 
 2. SPEAKER ATTRIBUTION INTELLIGENCE:
-   - Merge consecutive segments from the same speaker into one block
-   - If a speaker changes mid-sentence without clear voice transition, keep as same speaker
-   - Use contextual clues to fix misattributions:
+   - Analyze the conversation flow and context clues for speaker accuracy
+   - Use contextual clues to fix obvious misattributions:
      * "Thanks, Jeff" means the PREVIOUS speaker was NOT Jeff
      * "Jeff, what do you think?" means the NEXT speaker is likely Jeff
      * References like "As I mentioned..." indicate same speaker continuing
-   - Short segments under 5 seconds should usually be merged with adjacent segments from logical speaker
+   - If you detect a clear speaker name in the conversation, use that instead of generic labels
+   - Maintain speaker consistency throughout (if someone is "Jeff" once, keep them as "Jeff")
 
 3. TIMESTAMP REQUIREMENTS:
+   - Use the formatted_time provided for each segment
    - Every speaker block MUST start with [Speaker Name, MM:SS]:
-   - Use start_time from speaker_segments data
-   - Convert timestamps to MM:SS format (e.g., "00:01:25")
+   - Do NOT modify the timestamps - use them exactly as provided
 
 4. TEXT FORMATTING:
    - Add proper punctuation: periods, commas, capitalization
@@ -56,24 +98,19 @@ CRITICAL FORMATTING RULES:
    - Insert blank line between different speakers
    - Group related thoughts from same speaker together
 
-SPEAKER ATTRIBUTION ANALYSIS PROCESS:
-1. First, analyze conversation flow and context clues
-2. Identify obvious misattributions using conversational logic
-3. Merge segments that are clearly same speaker continuing thoughts
-4. Apply consistent speaker names throughout
-
-Speaker Segments Data: ${JSON.stringify(speakerSegments)}
+Preprocessed Speaker Segments:
+${JSON.stringify(processedSegments, null, 2)}
 
 EXAMPLE OUTPUT FORMAT:
-[Jeff, 00:01:12]:
+[Jeff, 01:12]:
 We're considering doing terrazzo on level one. We just need to confirm timing with the contractor. 
 
 Based on what Katherine mentioned earlier, this could work well with our schedule.
 
-[Katherine, 00:02:45]:
+[Katherine, 02:45]:
 That sounds good. Let's also check if the wall signage is still in scope for this phase.
 
-Apply intelligent speaker attribution correction and format according to these exact specifications.`;
+Apply intelligent speaker attribution correction and format according to these exact specifications. Use the provided formatted timestamps and improve speaker names based on context clues.`;
     } else {
       // Enhanced inference when segments aren't available
       prompt = `You are a transcript formatting assistant specializing in speaker diarization from unstructured text. The transcript below has no speaker labels - your job is to create a structured, readable conversation format with intelligent speaker detection.
