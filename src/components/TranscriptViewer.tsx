@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Search, Clock, User, Copy, Check, FileText, Code, Loader2 } from "lucide-react";
+import { Search, Clock, User, Copy, Check, FileText, Code, Loader2, Pencil, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SpeakerSegment {
@@ -37,6 +37,8 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   const [isCleanView, setIsCleanView] = useState(true);
   const [formattedTranscript, setFormattedTranscript] = useState<string>("");
   const [isFormatting, setIsFormatting] = useState(false);
+  const [editingSpeaker, setEditingSpeaker] = useState<{ blockIndex: number; originalName: string } | null>(null);
+  const [editedSpeakerName, setEditedSpeakerName] = useState<string>("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const handleCopyTranscript = async () => {
@@ -93,6 +95,30 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
     }, 0);
   };
 
+  const handleEditSpeaker = (blockIndex: number, currentName: string) => {
+    setEditingSpeaker({ blockIndex, originalName: currentName });
+    setEditedSpeakerName(currentName);
+  };
+
+  const handleSaveSpeakerEdit = () => {
+    if (!editingSpeaker || !editedSpeakerName.trim()) return;
+    
+    // Update the formatted transcript with the new speaker name
+    const updatedTranscript = formattedTranscript.replace(
+      new RegExp(`\\[${editingSpeaker.originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},`, 'g'),
+      `[${editedSpeakerName.trim()},`
+    );
+    
+    setFormattedTranscript(updatedTranscript);
+    setEditingSpeaker(null);
+    setEditedSpeakerName("");
+  };
+
+  const handleCancelSpeakerEdit = () => {
+    setEditingSpeaker(null);
+    setEditedSpeakerName("");
+  };
+
   const formatCleanTranscript = (text: string): string[] => {
     if (!text) return [];
     
@@ -143,24 +169,128 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
       );
     }
 
-    // Filter formatted transcript by search term
-    const filteredText = !searchTerm 
-      ? formattedTranscript 
-      : formattedTranscript
-          .split('\n')
-          .filter(line => line.toLowerCase().includes(searchTerm.toLowerCase()))
-          .join('\n');
-
+    // Split transcript into speaker blocks for enhanced rendering
+    const blocks = formattedTranscript.split('\n\n').filter(block => block.trim());
+    
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <p className="text-sm text-muted-foreground mb-4">
-          AI-formatted transcript with enhanced readability
+          AI-formatted transcript with enhanced readability and speaker editing
         </p>
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <div className="whitespace-pre-wrap text-base leading-relaxed">
-            {highlightText(filteredText, searchTerm)}
+        
+        {blocks.map((block, blockIndex) => {
+          const lowerBlock = block.toLowerCase();
+          const searchLower = searchTerm.toLowerCase();
+          
+          if (searchTerm && !lowerBlock.includes(searchLower)) {
+            return null;
+          }
+
+          // Extract speaker name and timestamp from block
+          const speakerMatch = block.match(/^\[([^,\]]+)(?:,\s*([^\]]+))?\]:/);
+          const speakerName = speakerMatch ? speakerMatch[1] : null;
+          const timestamp = speakerMatch ? speakerMatch[2] : null;
+          
+          // Extract the text content after the speaker label
+          const textContent = block.replace(/^\[[^\]]+\]:\s*/, '');
+          
+          return (
+            <div key={blockIndex} className="group border-l-2 border-primary/20 pl-4 py-3 hover:border-primary/40 transition-colors">
+              {/* Speaker Header with Edit Button */}
+              {speakerName && (
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      {speakerName}
+                    </Badge>
+                    {timestamp && (
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {timestamp}
+                      </Badge>
+                    )}
+                  </div>
+                  
+                  {/* Edit Speaker Button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditSpeaker(blockIndex, speakerName)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+                    title="Edit speaker name"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              
+              {/* Text Content */}
+              <div className="prose prose-sm max-w-none dark:prose-invert">
+                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {highlightText(textContent, searchTerm)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        
+        {/* Speaker editing modal */}
+        {editingSpeaker && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-background p-6 rounded-lg shadow-lg w-80 border">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">Edit Speaker Name</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancelSpeakerEdit}
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Speaker Name</label>
+                  <Input
+                    value={editedSpeakerName}
+                    onChange={(e) => setEditedSpeakerName(e.target.value)}
+                    placeholder="Enter speaker name"
+                    className="mt-1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveSpeakerEdit();
+                      } else if (e.key === 'Escape') {
+                        handleCancelSpeakerEdit();
+                      }
+                    }}
+                  />
+                </div>
+                
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancelSpeakerEdit}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveSpeakerEdit}
+                    className="flex items-center gap-1"
+                  >
+                    <Save className="h-3 w-3" />
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   };

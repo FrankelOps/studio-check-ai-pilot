@@ -44,9 +44,14 @@ Follow these formatting rules exactly:
 
 7. Insert a blank line between each speaker block for visual clarity.
 
+8. Apply contextual intelligence to fix obvious speaker misattributions:
+   - If someone says "Thanks, Jeff" or "Jeff, what do you think?", the previous speaker was likely NOT Jeff
+   - Use conversational context clues to refine speaker attribution
+   - When speaker IDs seem inconsistent, use content analysis to group similar voices/speaking patterns
+
 Speaker Segments Data: ${JSON.stringify(speakerSegments)}
 
-Please format this transcript according to the rules above.`;
+Please format this transcript according to the rules above, applying intelligent speaker attribution refinement.`;
     } else {
       // Infer speaker turns when segments aren't available
       prompt = `You are a transcript formatting assistant. The transcript below is raw and unstructured, with no speaker labels. Your job is to reformat it into a readable, conversation-style transcript.
