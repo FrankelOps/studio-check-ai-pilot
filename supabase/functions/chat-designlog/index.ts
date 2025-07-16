@@ -188,37 +188,41 @@ Transcript: ${result.transcript_text}
 
 // Helper function to generate OpenAI response
 async function generateResponse(context: string, transcriptContext: string, userQuestion: string, fullTranscripts: any[]) {
-      const systemPrompt = `You are StudioCheck DesignLog AI Assistant, an expert in architecture and construction design decision tracking.
+      // Strict grounding check - prevent hallucination
+      const hasAnyContext = (context && context.trim().length > 0) || (transcriptContext && transcriptContext.trim().length > 0);
+      
+      if (!hasAnyContext) {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          answer: "I don't have any uploaded meeting transcripts or design logs for this project yet. Please upload meeting recordings or documents first, then ask your question again.",
+          sources: []
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
-You have access to both design log summaries and full meeting transcripts to answer questions comprehensively.
+      const systemPrompt = `You are StudioCheck DesignLog AI Assistant. You can ONLY answer questions using the provided project context below.
+
+CRITICAL INSTRUCTION: You must ONLY reference information from the CONTEXT sections below. If the context does not contain information to answer the user's question, you must respond with: "This topic was not discussed in the available project records."
+
+DO NOT make up meetings, dates, quotes, or decisions that are not explicitly in the context below.
 
 ${context ? `CONTEXT - Design Log Entries:
-${context}` : ''}
+${context}` : 'No design log entries available.'}
 
 ${transcriptContext ? `CONTEXT - Meeting Transcripts:
-${transcriptContext}` : ''}
+${transcriptContext}` : 'No meeting transcripts available.'}
 
-Your role:
-- Answer questions about design decisions, owner requirements, and open questions
-- Explain the rationale behind design choices using both summaries and transcript details
-- Help track decision history and context
-- Provide insights on project requirements and constraints
-- Quote specific transcript excerpts when relevant to support your answers
+STRICT GUIDELINES:
+- ONLY use information explicitly provided in the CONTEXT sections above
+- If no relevant information exists in the context, respond: "This topic was not discussed in the available project records."
+- Do NOT invent meeting names, dates, or quotes
+- Do NOT use general architectural knowledge to fill gaps
+- When quoting, use the exact format: "From [Meeting Title] on [Date]: [exact quote]"
+- Only reference meetings that appear in the context above
+- If context is limited, acknowledge the limitation rather than guessing
 
-Enhanced Guidelines:
-- When transcript excerpts are available, quote relevant parts directly
-- Include meeting dates and titles when referencing transcript content
-- If a topic was discussed in multiple meetings, summarize how the conversation evolved
-- Use the format: "From [Meeting Title] on [Date]: [quoted excerpt]"
-- Distinguish between Owner Requirements, Design Decisions, and Open Questions
-- Use professional, clear language appropriate for architects and design teams
-- If a question can't be answered from available data, say so clearly
-- Prioritize transcript content over summaries when both are available for better accuracy
-
-Types of entries in the log:
-- Owner Requirement: Client-stated preferences, requests, or constraints
-- Design Decision: Choices made by the design team with rationale
-- Open Question: Unresolved issues requiring follow-up or decisions`;
+Your role is to be a precise, project-specific assistant that prevents misinformation by staying strictly within provided context.`;
 
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
