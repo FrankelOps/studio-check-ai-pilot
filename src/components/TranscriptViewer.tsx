@@ -44,7 +44,7 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   };
 
   const highlightText = (text: string, search: string) => {
-    if (!search.trim()) return text;
+    if (!text || !search.trim()) return text;
     
     const regex = new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     const parts = text.split(regex);
@@ -67,7 +67,7 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
           </p>
           <div className="prose prose-sm max-w-none dark:prose-invert">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">
-              {highlightText(transcript, searchTerm)}
+              {transcript ? highlightText(transcript, searchTerm) : 'No transcript available'}
             </p>
           </div>
         </div>
