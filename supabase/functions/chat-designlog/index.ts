@@ -121,6 +121,7 @@ Created: ${new Date(entry.created_at).toLocaleDateString()}
     // Also try keyword search as fallback if embeddings don't return good results
     let keywordSearchResults: any[] = [];
     if (similarContent?.length === 0 || !similarContent) {
+      // First try with design_logs join if available
       const { data: keywordData, error: keywordError } = await supabase
         .from('meeting_minutes')
         .select('meeting_title, meeting_date, transcript_text, design_logs!inner(id, project_id)')
@@ -129,8 +130,21 @@ Created: ${new Date(entry.created_at).toLocaleDateString()}
         .not('transcript_text', 'is', null)
         .limit(3);
       
-      if (!keywordError && keywordData) {
+      if (!keywordError && keywordData && keywordData.length > 0) {
         keywordSearchResults = keywordData;
+      } else {
+        // Fallback: Search meeting_minutes directly by project_id if no design_logs exist
+        const { data: directKeywordData, error: directKeywordError } = await supabase
+          .from('meeting_minutes')
+          .select('meeting_title, meeting_date, transcript_text')
+          .eq('project_id', projectId)
+          .textSearch('transcript_text', question.replace(/[^a-zA-Z0-9\s]/g, ''))
+          .not('transcript_text', 'is', null)
+          .limit(3);
+        
+        if (!directKeywordError && directKeywordData) {
+          keywordSearchResults = directKeywordData;
+        }
       }
     }
 
