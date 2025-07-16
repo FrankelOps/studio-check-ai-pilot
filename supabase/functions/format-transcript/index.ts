@@ -20,8 +20,11 @@ serve(async (req) => {
 
     const { speakerSegments, transcriptText } = await req.json();
 
-    // Create the prompt for GPT-4 to format the transcript
-    const prompt = `You are a transcript formatting assistant. Your job is to transform raw meeting transcripts into a clean, readable format for human viewers.
+    let prompt;
+
+    if (speakerSegments && speakerSegments.length > 0) {
+      // Use speaker segments when available
+      prompt = `You are a transcript formatting assistant. Your job is to transform raw meeting transcripts into a clean, readable format for human viewers using the provided speaker segment data.
 
 Follow these formatting rules exactly:
 
@@ -29,7 +32,7 @@ Follow these formatting rules exactly:
    [Speaker Name, Start Timestamp]:
    Text spoken by that speaker...
 
-2. Use speaker names and timestamps from speaker_segments data when available.
+2. Use speaker names and timestamps from speaker_segments data.
 
 3. Group each speaker's contribution as its own block. If a speaker speaks more than once, show each block separately in order.
 
@@ -41,10 +44,32 @@ Follow these formatting rules exactly:
 
 7. Insert a blank line between each speaker block for visual clarity.
 
-Input data:
-${speakerSegments ? `Speaker Segments: ${JSON.stringify(speakerSegments)}` : `Raw Transcript: ${transcriptText}`}
+Speaker Segments Data: ${JSON.stringify(speakerSegments)}
 
 Please format this transcript according to the rules above.`;
+    } else {
+      // Infer speaker turns when segments aren't available
+      prompt = `You are a transcript formatting assistant. The transcript below is raw and unstructured, with no speaker labels. Your job is to reformat it into a readable, conversation-style transcript.
+
+Instructions:
+
+- Break the text into clear speaker turns based on context switches, pauses, and conversational flow
+- Format each turn like:
+  [Speaker]:
+  Full sentence(s)...
+
+- If speaker names can be identified from context (e.g., "Jeff said", "Katherine mentioned"), use those names: [Jeff], [Katherine]
+- If speaker names cannot be reliably extracted, use [Speaker] or [Unknown]
+- Add paragraph breaks between speakers
+- Add punctuation and fix run-on sentences, but do not change the original phrasing or summarize
+- Remove excessive filler words (e.g., repeated "yeah, yeah, yeah") but preserve meaningful speech patterns
+- Add approximate timestamps every 2-3 minutes if possible using format [2:30] at natural breaks
+
+Raw Transcript:
+${transcriptText}
+
+Please format this transcript into a clear dialogue structure with speaker turns.`;
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
