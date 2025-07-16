@@ -59,7 +59,7 @@ export const TranscriptViewer: React.FC<TranscriptViewerProps> = ({
   };
 
   const renderSpeakerSegments = () => {
-    if (!speakerSegments.length) {
+    if (!speakerSegments || !speakerSegments.length) {
       return (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground mb-4">
