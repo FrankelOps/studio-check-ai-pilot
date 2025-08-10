@@ -8,11 +8,90 @@ const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Rasterization and caching config
+const PDFCO_API_KEY = Deno.env.get('PDFCO_API_KEY') || '';
+const USE_RASTERIZER = (Deno.env.get('USE_RASTERIZER') || 'false').toLowerCase() === 'true';
+const RASTERIZE_DPI = Number(Deno.env.get('RASTERIZE_DPI') || 400);
+const SIGN_TTL = Number(Deno.env.get('RASTERIZE_TTL_SECONDS') || 3600);
+
+// Service client for storage/cache operations
+const sbService = createClient(supabaseUrl, supabaseKey);
+
+type RasterizeResult = { page: number; signedUrl: string; storagePath: string };
+
+async function createSignedUrlFromProjectFiles(filePath: string, ttlSeconds = SIGN_TTL) {
+  const { data, error } = await sbService.storage.from('project-files').createSignedUrl(filePath, ttlSeconds);
+  if (error || !data?.signedUrl) throw new Error('Failed to create signed URL for PDF source');
+  return data.signedUrl;
+}
+
+async function pdfcoRasterizeToPngUrls(pdfSignedUrl: string, dpi = RASTERIZE_DPI): Promise<string[]> {
+  if (!PDFCO_API_KEY) throw new Error('Missing PDFCO_API_KEY');
+  const resp = await fetch('https://api.pdf.co/v1/pdf/convert/to/png', {
+    method: 'POST',
+    headers: { 'x-api-key': PDFCO_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: pdfSignedUrl, dpi, async: false, pages: '' })
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data?.urls?.length) {
+    console.error('PDF.co error', data);
+    throw new Error('PDF rasterization failed');
+  }
+  return data.urls as string[];
+}
+
+async function uploadPngToStorage(pngResponse: Response, destPath: string): Promise<string> {
+  const bytes = new Uint8Array(await pngResponse.arrayBuffer());
+  const { error } = await sbService.storage.from('studiocheck-pages').upload(
+    destPath,
+    new Blob([bytes], { type: 'image/png' }),
+    { upsert: true }
+  );
+  if (error) throw error;
+  const { data: signed } = await sbService.storage.from('studiocheck-pages').createSignedUrl(destPath, SIGN_TTL);
+  if (!signed?.signedUrl) throw new Error('Failed to sign stored page PNG');
+  return signed.signedUrl;
+}
+
+async function listCachedPageImages(prefix: string): Promise<RasterizeResult[]> {
+  const { data: list, error } = await sbService.storage.from('studiocheck-pages').list(prefix, { limit: 1000 });
+  if (error) return [];
+  const out: RasterizeResult[] = [];
+  for (const it of list || []) {
+    const m = it.name.match(/^page-(\d+)\.png$/);
+    if (!m) continue;
+    const page = Number(m[1]);
+    const path = `${prefix}${it.name}`;
+    const { data: signed } = await sbService.storage.from('studiocheck-pages').createSignedUrl(path, SIGN_TTL);
+    if (signed?.signedUrl) out.push({ page, signedUrl: signed.signedUrl, storagePath: path });
+  }
+  return out.sort((a, b) => a.page - b.page);
+}
+
+async function ensurePageImages(projectId: string, fileId: string, pdfSignedUrl: string): Promise<RasterizeResult[]> {
+  const prefix = `${projectId}/${fileId}/`;
+  const cached = await listCachedPageImages(prefix);
+  if (cached.length) {
+    console.log('rasterize:cache-hit', { pages: cached.length });
+    return cached;
+  }
+  console.log('rasterize:start', { dpi: RASTERIZE_DPI });
+  const pngUrls = await pdfcoRasterizeToPngUrls(pdfSignedUrl, RASTERIZE_DPI);
+  const results: RasterizeResult[] = [];
+  for (let i = 0; i < pngUrls.length; i++) {
+    const resp = await fetch(pngUrls[i]);
+    const dest = `${prefix}page-${i + 1}.png`;
+    const signed = await uploadPngToStorage(resp, dest);
+    results.push({ page: i + 1, signedUrl: signed, storagePath: dest });
+  }
+  console.log('rasterize:done', { pages: results.length });
+  return results;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
 // StudioCheck – Specificity-First QA/QC Reviewer (v2) - Updated with Patch Instructions
 export const SYSTEM_PROMPT = `
 You are StudioCheck, an expert construction QA/QC reviewer for commercial, healthcare, and life-science projects.
@@ -146,38 +225,51 @@ serve(async (req) => {
           }
         }
         
-// Process each page separately and collect findings
+// Process each page separately and collect findings (with optional rasterization)
 const totalPages = pageCount;
+
+// Create a signed URL for the source PDF once
+const pdfSignedUrl = await createSignedUrlFromProjectFiles(fileData.file_path, SIGN_TTL);
+let pageImages: { page: number; signedUrl: string }[] = [];
+
+if (USE_RASTERIZER) {
+  pageImages = await ensurePageImages(projectId, fileId, pdfSignedUrl);
+}
+
+const PAGE_LIMIT = 10;
+const plannedPages = pageImages.length ? pageImages.length : totalPages;
+const pagesToProcess = Math.min(plannedPages, PAGE_LIMIT);
+
 const allPageFindings: Finding[][] = [];
 
-for (let i = 0; i < Math.min(totalPages, 10); i++) { // Limit to 10 pages for perf/cost
+for (let i = 0; i < pagesToProcess; i++) {
   try {
     const pageIndex = i;
     const sheetNumber = `Page ${pageIndex + 1}`;
     const sheetTitle = '';
 
-    // TODO: Rasterize PDF pages to PNG/JPG at 300–600 DPI and upload to storage.
-    // If/when available, set pageImageSignedUrl to the image URL for this page.
-    const pageImageSignedUrl: string | undefined = undefined;
+    const pageImageSignedUrl = pageImages[pageIndex]?.signedUrl;
     const ocrTextForPage = '';
 
     const userContentParts: any[] = [
-      { type: 'text', text: `Analyze the following single drawing page. Page: ${pageIndex + 1} of ${totalPages}. File: ${fileData.file_name}. If known: sheet ${sheetNumber || ''} ${sheetTitle || ''}.` },
+      { type: 'text', text: `Analyze the following single drawing page. Page: ${pageIndex + 1} of ${plannedPages}. File: ${fileData.file_name}. If known: sheet ${sheetNumber} ${sheetTitle}` },
     ];
 
     if (pageImageSignedUrl) {
-      userContentParts.push({ type: 'image_url', image_url: pageImageSignedUrl });
+      userContentParts.push({ type: 'image_url', image_url: { url: pageImageSignedUrl } });
     }
 
     userContentParts.push(
       { type: 'text', text: `OCR_TEXT:\n${ocrTextForPage || '(none)'}` },
-      { type: 'text', text: `Return JSON ONLY following this schema:\n${FINDING_SCHEMA_TEXT}` },
+      { type: 'text', text: `Return JSON ONLY following this schema:\n${FINDING_SCHEMA_TEXT}` }
     );
 
     const messages = [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userContentParts },
     ];
+
+    console.log('analyze:page', { page: pageIndex + 1, hasImage: !!pageImageSignedUrl, ocrLen: ocrTextForPage.length });
 
     const pageFindings = await analyzeContent(messages, `${fileData.file_name} (Page ${pageIndex + 1})`);
     if (Array.isArray(pageFindings)) allPageFindings.push(pageFindings);
@@ -186,7 +278,7 @@ for (let i = 0; i < Math.min(totalPages, 10); i++) { // Limit to 10 pages for pe
   }
 }
 
-// Flatten and post-parse safeguard (single fallback only if all pages empty)
+// Flatten and single fallback only if all pages produced zero findings
 let aggregatedFindings: Finding[] = allPageFindings.flat().filter(Boolean) as Finding[];
 if (!aggregatedFindings.length) {
   aggregatedFindings.push({
