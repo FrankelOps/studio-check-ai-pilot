@@ -71,12 +71,18 @@ For electrical systems, match circuit tags in panel schedules (e.g., "Ckt 3") wi
 
 # Output Format
 Return all issues as a JSON array (not as a narrative or list).
+- Never return an empty array. If no provable issues are found, return exactly one item with:
+  - category: "No Issues Detected"
+  - sheet_number (or sheet_reference), location_quadrant, nearby_text
+  - issue: "No provable issues detected"
+  - construction_impact, reasoning, suggested_action
+  - severity: "Low", cross_references: [], requires_coordination: false
 
 # Tone and Professionalism
 Use a professional, direct, and practical tone. You are writing like a QA consultant preparing a real design review report for a construction kickoff meeting.
 
 # Final Reminder
-Only return issues you can prove with what's visible. When in doubt, say nothing. Your credibility depends on being specific, accurate, and grounded in the actual plans.`;
+Only return issues you can prove with what's visible. If none can be proven, return the single "No Issues Detected" item as specified above. Do not return []. Your credibility depends on being specific, accurate, and grounded in the actual plans.`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -186,6 +192,14 @@ Focus on identifying issues that would typically require:
 - Change Orders
 - Construction delays
 - Rework or clarification
+
+OUTPUT RULES (important for GPT-4.1):
+- Return a JSON array of issues only.
+- Never return an empty array []. If no provable issues are found on this page, return exactly one object using the required fields with:
+  - category: "No Issues Detected"
+  - issue: "No provable issues detected on this page"
+  - severity: "Low"
+- Do NOT include page_number; use sheet_number/sheet_reference only.
 
 Return detailed findings with specific location references. If referencing other sheets, ONLY use sheets from the available sheets list.`
               }
@@ -306,6 +320,11 @@ Apply expert construction QA/QC review methodology:
 - Flag inconsistencies between callouts and available information
 - Identify missing references that should exist for clarity
 
+OUTPUT RULES (important for GPT-4.1):
+- Return a JSON array only.
+- Never return an empty array []. If no provable issues are found, return exactly one object with category "No Issues Detected" and severity "Low" using the required fields.
+- Do NOT include page_number.
+
 Return comprehensive findings that would help prevent RFIs, change orders, and construction delays.`
         },
         {
@@ -425,6 +444,26 @@ async function analyzeContent(content: any, fileName: string) {
         description: finding.description || finding.issue || "",
         location_reference: finding.location_reference || finding.sheet_reference || fileName
       }));
+
+      // If the model returned an empty array, synthesize a structured fallback issue
+      if (!Array.isArray(analysisData) || analysisData.length === 0) {
+        analysisData = [{
+          category: "No Issues Detected",
+          sheet_reference: fileName,
+          location: "",
+          nearby_text: "",
+          issue: "No provable issues detected based on provided content",
+          construction_impact: "No immediate impact identified. Provide higher-resolution images or ensure pages are rasterized.",
+          reasoning: "Model returned no findings; likely insufficient visual data from PDF or strict adherence to provability requirement.",
+          suggested_action: "Re-run with high-resolution JPG/PNG page images (300–600 DPI) or provide OCR text alongside images.",
+          severity: "Low",
+          cross_references: [],
+          requires_coordination: false,
+          // Legacy fields
+          description: "No provable issues detected based on provided content",
+          location_reference: fileName
+        }];
+      }
       
     } catch (parseError) {
       console.error('Failed to parse AI response as JSON:', parseError);
