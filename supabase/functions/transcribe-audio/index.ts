@@ -185,7 +185,7 @@ serve(async (req) => {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o',
+            model: 'gpt-4.1-2025-04-14',
             messages: [
               {
                 role: 'system',
@@ -235,7 +235,7 @@ Extract decisions, requirements, action items, and questions with speaker attrib
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'gpt-4o',
+            model: 'gpt-4.1-2025-04-14',
             messages: [
               {
                 role: 'system',
