@@ -13,6 +13,9 @@ const PDFCO_API_KEY = (Deno.env.get('PDFCO_API_KEY') || '').trim();
 const USE_RASTERIZER = /^(1|true|yes|on)$/i.test(Deno.env.get('USE_RASTERIZER') || '');
 const RASTERIZE_DPI = Number(Deno.env.get('RASTERIZE_DPI') || 400);
 const SIGN_TTL = Number(Deno.env.get('RASTERIZE_TTL_SECONDS') || 3600);
+// Optional limits with defaults
+const PAGE_LIMIT = Number(Deno.env.get('PAGE_LIMIT') || 10);
+const RASTERIZE_MAX_WAIT_SECONDS = Number(Deno.env.get('RASTERIZE_MAX_WAIT_SECONDS') || 180);
 
 // Service client for storage/cache operations
 const sbService = createClient(supabaseUrl, supabaseKey);
@@ -25,19 +28,61 @@ async function createSignedUrlFromProjectFiles(filePath: string, ttlSeconds = SI
   return data.signedUrl;
 }
 
-async function pdfcoRasterizeToPngUrls(pdfSignedUrl: string, dpi = RASTERIZE_DPI): Promise<string[]> {
+async function pdfcoRasterizeToPngUrls(pdfSignedUrl: string, dpi = RASTERIZE_DPI, pagesRange = ""): Promise<string[]> {
   if (!PDFCO_API_KEY) throw new Error('Missing PDFCO_API_KEY');
+  const body = { url: `cache:${pdfSignedUrl}`, dpi, async: true, pages: pagesRange || "" } as const;
+  const start = Date.now();
   const resp = await fetch('https://api.pdf.co/v1/pdf/convert/to/png', {
     method: 'POST',
     headers: { 'x-api-key': PDFCO_API_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: pdfSignedUrl, dpi, async: false, pages: '' })
+    body: JSON.stringify(body)
   });
-  const data = await resp.json();
-  if (!resp.ok || !data?.urls?.length) {
-    console.error('PDF.co error', data);
+  const init = await resp.json().catch(() => ({}));
+  if (!resp.ok || !init?.jobId) {
+    console.error('PDF.co error', init);
     throw new Error('PDF rasterization failed');
   }
-  return data.urls as string[];
+  const jobId: string = init.jobId;
+  console.log('rasterize:job', { jobId });
+
+  let interval = 2000;
+  let lastPayload: any = null;
+  while ((Date.now() - start) / 1000 < RASTERIZE_MAX_WAIT_SECONDS) {
+    const statusResp = await fetch(`https://api.pdf.co/v1/job/check?jobid=${encodeURIComponent(jobId)}`, {
+      headers: { 'x-api-key': PDFCO_API_KEY }
+    });
+    const payload = await statusResp.json().catch(() => ({}));
+    lastPayload = payload;
+    const status = payload?.status;
+    console.log('rasterize:poll', { status, elapsed: Math.round((Date.now() - start) / 1000) });
+
+    if (status === 'success') {
+      const resultUrl: string | undefined = init.url || payload?.url;
+      if (!resultUrl) {
+        console.error('rasterize:fail', payload);
+        throw new Error('PDF.co job success but missing result URL');
+      }
+      console.log('rasterize:result-url', { url: resultUrl });
+      const resultResp = await fetch(resultUrl);
+      const result = await resultResp.json().catch(() => ({}));
+      const urls: string[] = result?.urls || [];
+      if (!urls.length) {
+        console.error('rasterize:fail', result);
+        throw new Error('PDF.co returned no page URLs');
+      }
+      return urls;
+    }
+
+    if (status === 'failed' || status === 'aborted' || status === 'error') {
+      console.error('rasterize:fail', payload);
+      throw new Error(`PDF.co job failed: ${status}`);
+    }
+
+    if ((Date.now() - start) / 1000 > 60) interval = 4000;
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  console.error('rasterize:fail', lastPayload);
+  throw new Error('PDF rasterization timeout');
 }
 
 async function uploadPngToStorage(pngResponse: Response, destPath: string): Promise<string> {
@@ -75,8 +120,9 @@ async function ensurePageImages(projectId: string, fileId: string, pdfSignedUrl:
     console.log('rasterize:cache-hit', { pages: cached.length });
     return cached;
   }
-  console.log('rasterize:start', { dpi: RASTERIZE_DPI });
-  const pngUrls = await pdfcoRasterizeToPngUrls(pdfSignedUrl, RASTERIZE_DPI);
+  const pagesRange = `1-${PAGE_LIMIT}`;
+  console.log('rasterize:start', { dpi: RASTERIZE_DPI, pagesRange });
+  const pngUrls = await pdfcoRasterizeToPngUrls(pdfSignedUrl, RASTERIZE_DPI, pagesRange);
   const results: RasterizeResult[] = [];
   for (let i = 0; i < pngUrls.length; i++) {
     const resp = await fetch(pngUrls[i]);
@@ -235,14 +281,24 @@ serve(async (req) => {
 const totalPages = pageCount;
 
 // Create a signed URL for the source PDF once
-const pdfSignedUrl = await createSignedUrlFromProjectFiles(fileData.file_path, SIGN_TTL);
+let pdfSignedUrl = await createSignedUrlFromProjectFiles(fileData.file_path, SIGN_TTL);
 let pageImages: { page: number; signedUrl: string }[] = [];
+
+// Preflight the signed URL before sending to PDF.co
+let probe = await fetch(pdfSignedUrl, { method: "HEAD" });
+if (!probe.ok) {
+  const pdfSignedUrl2 = await createSignedUrlFromProjectFiles(fileData.file_path, SIGN_TTL * 2);
+  const probe2 = await fetch(pdfSignedUrl2, { method: "HEAD" });
+  if (!probe2.ok) throw new Error(`PDF signed URL not accessible to external fetch: ${probe2.status}`);
+  pdfSignedUrl = pdfSignedUrl2;
+}
+console.log("pdf:signed-url:ok");
 
 console.log("rasterize:gate", { USE_RASTERIZER });
 if (USE_RASTERIZER) {
   pageImages = await ensurePageImages(projectId, fileId, pdfSignedUrl);
 }
-const PAGE_LIMIT = 10;
+/* Using PAGE_LIMIT from env */
 const plannedPages = pageImages.length ? pageImages.length : totalPages;
 const pagesToProcess = Math.min(plannedPages, PAGE_LIMIT);
 
