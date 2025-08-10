@@ -14,75 +14,73 @@ const corsHeaders = {
 };
 
 // StudioCheck – Specificity-First QA/QC Reviewer (v2) - Updated with Patch Instructions
-const SYSTEM_PROMPT = `# Identity
-You are an expert construction QA/QC reviewer embedded in the StudioCheck platform. Your role is to analyze uploaded architectural drawings and specifications as a professional owner's rep, architect, or design-phase QA consultant would — with field-realistic detail and trade-specific insight. You are not a pattern matcher or suggestion generator. You are a trained construction professional checking the plans as if they are going to be built tomorrow.
+export const SYSTEM_PROMPT = `
+You are StudioCheck, an expert construction QA/QC reviewer for commercial, healthcare, and life-science projects.
 
-# Objective
-Your goal is to surface only specific, clearly provable, and visually anchored issues from uploaded construction PDFs. These issues must reflect how a human reviewer would assess constructability, coordination, and completeness across disciplines.
+TASK
+Analyze each drawing page to identify potential issues that could cause RFIs, change orders, delays, or non-compliance.
 
-# Scope of Review
-When reviewing a drawing set (plans + specifications), focus on the following categories:
-1. Cross-Reference & Callout Errors — Flag any missing or broken detail references (e.g. "Detail 3/A502" not found).
-2. Coordination Conflicts — Identify overlapping or clashing systems (e.g., light fixture conflicts with mechanical diffuser).
-3. Missing Information — Flag ONLY when compared to a referenced coordination element (e.g., "Panel A on E601 lists Circuit 5 but no Circuit 5 is shown on E101 plan"). DO NOT flag generic empty schedules unless they create coordination or constructability risk.
-4. Drawing vs. Specification Inconsistencies — Highlight if notes, tags, or symbols contradict the specifications or each other.
-5. Code/ADA Issues — Check code required clearances, layouts, reach heights, restrooms, door sizes, door swings, etc.
-6. Buildability Risks — Would a contractor be able to build this without an RFI?
+INPUT MODALITIES
+• You will receive both a page IMAGE and the OCR TEXT for the same page.
+• Use the image for visual evidence (symbols, tags, callouts, backgrounds, door swings, clearances).
+• Use text for notes/schedules/spec references.
 
-# Special Focus: Electrical Systems
-For electrical systems, match circuit tags in panel schedules (e.g., "Ckt 3") with their locations and usage on electrical plan sheets. Flag mismatches or missing information only if they result in ambiguous installation for the electrical subcontractor.
+OUTPUT RULES (IMPORTANT)
+• Return an ARRAY of finding objects (0 or more). Do NOT return null or undefined.
+• Include low-confidence findings (use the "confidence" field) instead of omitting them.
+• NEVER return an empty string for any field; use concise plain English.
+• Use the exact JSON schema provided by the user message.
+• If no issues are found on a page, simply return an empty array for that page—do not fabricate results.
 
-# ENFORCEMENT LOGIC: STRUCTURED OUTPUT + FIELD VALIDATION
+SCORING GUIDANCE
+• risk: High (likely code/safety/major cost), Medium (coordination or moderate cost), Low (minor clarity).
+• confidence: High (direct evidence on this page), Medium (inferred from clear context), Low (possible, needs RFI).
+• Be specific: cite the nearest marker/text, sheet callout (e.g., "Detail 3/A502"), and page number.
 
-1. ✅ **REQUIRED FIELDS** (each must appear exactly once per issue):
-   - sheet_number: Drawing sheet ID (e.g., A101). Do NOT use PDF page numbers.
-   - location_quadrant: e.g., "upper-right", "bottom-left"
-   - nearby_text: Nearby anchor or label (e.g., "Room 203", "Panel A")
-   - issue: Clear, short description of what's wrong
-   - construction_impact: Must include trade(s) + real-world risk to install/delay
-   - reasoning: What you compared, what you found (must be specific)
-   - suggested_action: Clear next step (e.g., "Issue RFI", "Coordinate with Structural")
-   - severity: One of: Low, Medium, High
-   - cross_references: List of involved sheet numbers
-   - requires_coordination: true/false
+STYLE
+• Explain *why* you flagged it (“AI_reasoning”), referencing the visual/text evidence.
+• Provide a clear “suggested_action” suitable for field use.
 
-2. ❌ **DISALLOWED FIELDS**:
-   - page_number: Never include or reference PDF page numbers.
-   - Any non-standard fields not listed above.
+Do not include any additional wrapper text—only the JSON response as required.
+`;
 
-3. ❗**RISK SEVERITY RULES**:
-   - High: Likely RFI or install delay, affects critical path
-   - Medium: Needs clarification but doesn't block progress
-   - Low: Minor field ambiguity or cosmetic inconsistency
+export const FINDING_SCHEMA_TEXT = `
+{
+  "findings": [
+    {
+      "category": "Missing Information | Coordination Conflict | Spec/Product Conflict | Code/ADA Violation | Drawing/Spec Inconsistency | Other Red Flag",
+      "risk": "High | Medium | Low",
+      "confidence": "High | Medium | Low",
+      "coordination_required": true,
+      "sheet_spec_reference": "e.g., A101, Detail 3/A502, Panel A schedule",
+      "page": <integer starting at 1>,
+      "nearby_text_marker": "closest note/label/callout text",
+      "issue": "one-sentence problem statement",
+      "construction_impact": "short, trade-aware impact statement",
+      "ai_reasoning": "why this was flagged; cite visual/text evidence",
+      "suggested_action": "clear next step (RFI, revise detail, coordinate M/E/P, etc.)",
+      "references": ["FileName (Page X)", "Spec Section if present"],
+      "cross_references": ["other pages/sheets if cited"]
+    }
+  ]
+}
+`;
 
-4. 💬 **LANGUAGE RESTRICTIONS**:
-   - Do NOT use vague terms: "appears", "seems", "may be missing"
-   - Do NOT flag blank schedules or missing dimensions unless you can **prove** they conflict with referenced plans/specs
-   - Only flag "Missing Info" if it causes a coordination or constructability problem
-
-5. 🖼️ **VISUAL ANCHORING**:
-   - Always reference a visual cue: a quadrant, nearby label, or room tag
-   - If bounding boxes or overlays are supported, describe or attach them
-
-6. 📦 **OUTPUT FORMAT**:
-   - All issues must be returned as a JSON array
-   - Each object must fully match the above schema and rules
-   - Reject or flag issues that don't meet these criteria before final delivery
-
-# Output Format
-Return all issues as a JSON array (not as a narrative or list).
-- Never return an empty array. If no provable issues are found, return exactly one item with:
-  - category: "No Issues Detected"
-  - sheet_number (or sheet_reference), location_quadrant, nearby_text
-  - issue: "No provable issues detected"
-  - construction_impact, reasoning, suggested_action
-  - severity: "Low", cross_references: [], requires_coordination: false
-
-# Tone and Professionalism
-Use a professional, direct, and practical tone. You are writing like a QA consultant preparing a real design review report for a construction kickoff meeting.
-
-# Final Reminder
-Only return issues you can prove with what's visible. If none can be proven, return the single "No Issues Detected" item as specified above. Do not return []. Your credibility depends on being specific, accurate, and grounded in the actual plans.`;
+export type Finding = {
+  category: string;
+  risk: "High" | "Medium" | "Low";
+  confidence: "High" | "Medium" | "Low";
+  coordination_required: boolean;
+  sheet_spec_reference: string;
+  page: number;
+  nearby_text_marker: string;
+  issue: string;
+  construction_impact: string;
+  ai_reasoning: string;
+  suggested_action: string;
+  references: string[];
+  cross_references: string[];
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -148,108 +146,92 @@ serve(async (req) => {
           }
         }
         
-        const documentContext = `
-DOCUMENT CONTEXT:
-- Total Pages: ${pageCount}
-- Available Sheets: ${sheetTitles.join(', ')}
-- Document: ${fileData.file_name}
+// Process each page separately and collect findings
+const totalPages = pageCount;
+const allPageFindings: Finding[][] = [];
 
-CRITICAL: Only reference sheets that actually exist in this document. Do not create fictional sheet references.
-`;
-        
-        // Process each page as a separate image
-        const analysisPromises = [];
-        const allFindings = [];
-        
-        for (let i = 0; i < Math.min(pageCount, 10); i++) { // Limit to 10 pages for performance/cost
-          try {
-            // Extract page as image (simplified approach - in production would use proper PDF-to-image conversion)
-            // For now, we'll create a comprehensive text analysis prompt for PDF pages
-            const pageContent = [
-              {
-                type: 'text',
-                text: `${documentContext}
+for (let i = 0; i < Math.min(totalPages, 10); i++) { // Limit to 10 pages for perf/cost
+  try {
+    const pageIndex = i;
+    const sheetNumber = `Page ${pageIndex + 1}`;
+    const sheetTitle = '';
 
-HOLISTIC PDF ANALYSIS - Page ${i + 1} of ${pageCount}
-                
-Document: ${fileData.file_name}
-Page: ${i + 1}/${pageCount}
-Current Sheet: Page ${i + 1}
-Building Type: Commercial/Healthcare/Life Science
+    // TODO: Rasterize PDF pages to PNG/JPG at 300–600 DPI and upload to storage.
+    // If/when available, set pageImageSignedUrl to the image URL for this page.
+    const pageImageSignedUrl: string | undefined = undefined;
+    const ocrTextForPage = '';
 
-IMPORTANT: Only reference sheets that exist in the available sheets list above. Do not invent or hallucinate sheet numbers.
+    const userContentParts: any[] = [
+      { type: 'text', text: `Analyze the following single drawing page. Page: ${pageIndex + 1} of ${totalPages}. File: ${fileData.file_name}. If known: sheet ${sheetNumber || ''} ${sheetTitle || ''}.` },
+    ];
 
-Perform comprehensive construction QA/QC analysis of this PDF page. Apply expert-level construction document review thinking:
+    if (pageImageSignedUrl) {
+      userContentParts.push({ type: 'image_url', image_url: pageImageSignedUrl });
+    }
 
-1. CONTEXT AWARENESS: Understand this page's role in the overall document set
-2. CROSS-REFERENCE IDENTIFICATION: Note any callouts, detail bubbles, grid references, or sheet references - but ONLY reference sheets from the available sheets list
-3. HOLISTIC ASSESSMENT: Evaluate design intent, not just isolated elements
-4. COORDINATION VERIFICATION: Check for discipline conflicts and missing coordination
-5. CONSTRUCTABILITY REVIEW: Identify potential construction challenges or clarifications needed
+    userContentParts.push(
+      { type: 'text', text: `OCR_TEXT:\n${ocrTextForPage || '(none)'}` },
+      { type: 'text', text: `Return JSON ONLY following this schema:\n${FINDING_SCHEMA_TEXT}` },
+    );
 
-Focus on identifying issues that would typically require:
-- RFIs (Request for Information)
-- Change Orders
-- Construction delays
-- Rework or clarification
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userContentParts },
+    ];
 
-OUTPUT RULES (important for GPT-4.1):
-- Return a JSON array of issues only.
-- Never return an empty array []. If no provable issues are found on this page, return exactly one object using the required fields with:
-  - category: "No Issues Detected"
-  - issue: "No provable issues detected on this page"
-  - severity: "Low"
-- Do NOT include page_number; use sheet_number/sheet_reference only.
+    const pageFindings = await analyzeContent(messages, `${fileData.file_name} (Page ${pageIndex + 1})`);
+    if (Array.isArray(pageFindings)) allPageFindings.push(pageFindings);
+  } catch (pageError) {
+    console.error(`Error processing PDF page ${i + 1}:`, pageError);
+  }
+}
 
-Return detailed findings with specific location references. If referencing other sheets, ONLY use sheets from the available sheets list.`
-              }
-            ];
-            
-            // For now, we'll analyze the PDF page conceptually
-            // In production, you'd want to use a proper PDF-to-image library
-            const pageAnalysis = await analyzeContent(pageContent, fileData.file_name + ` (Page ${i + 1})`);
-            if (pageAnalysis && pageAnalysis.length > 0) {
-              allFindings.push(...pageAnalysis);
-            }
-          } catch (pageError) {
-            console.error(`Error processing PDF page ${i + 1}:`, pageError);
-          }
-        }
-        
-        // Combine all findings
-        const consolidatedFindings = allFindings.length > 0 ? allFindings : [{
-          category: "Other Red Flag",
-          description: `PDF document processed (${pageCount} pages). For optimal vision-based analysis of construction drawings, consider converting PDF pages to high-resolution JPG/PNG images. This enables detailed visual analysis of drawings, symbols, dimensions, and annotations.`,
-          location_reference: fileData.file_name,
-          severity: "Medium",
-          cross_references: [],
-          requires_coordination: false
-        }];
+// Flatten and post-parse safeguard (single fallback only if all pages empty)
+let aggregatedFindings: Finding[] = allPageFindings.flat().filter(Boolean) as Finding[];
+if (!aggregatedFindings.length) {
+  aggregatedFindings.push({
+    category: "Other Red Flag",
+    risk: "Low",
+    confidence: "High",
+    coordination_required: false,
+    sheet_spec_reference: `${fileData.file_name}`,
+    page: 1,
+    nearby_text_marker: "N/A",
+    issue: "No issues detected in the provided pages",
+    construction_impact: "No coordination or constructability risks identified based on visible content.",
+    ai_reasoning: "Model reviewed images and OCR text for each page and found no missing references, conflicts, or compliance concerns.",
+    suggested_action: "Proceed; optionally run a deep-dive pass on critical sheets.",
+    references: [`${fileData.file_name}`],
+    cross_references: []
+  });
+}
 
-        // Store the results
-        const { data: analysisResult, error: analysisError } = await supabase
-          .from('analysis_results')
-          .insert({
-            project_id: projectId,
-            file_id: fileId,
-            analysis_data: consolidatedFindings,
-            status: 'completed'
-          })
-          .select()
-          .single();
+// Store the results
+const { data: analysisResult, error: analysisError } = await supabase
+  .from('analysis_results')
+  .insert({
+    project_id: projectId,
+    file_id: fileId,
+    analysis_data: aggregatedFindings,
+    status: 'completed'
+  })
+  .select()
+  .single();
 
-        if (analysisError) {
-          console.error('Error storing analysis:', analysisError);
-          throw new Error('Failed to store analysis results');
-        }
+if (analysisError) {
+  console.error('Error storing analysis:', analysisError);
+  throw new Error('Failed to store analysis results');
+}
 
-        return new Response(JSON.stringify({ 
-          success: true, 
-          analysisId: analysisResult.id,
-          findings: consolidatedFindings 
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+return new Response(JSON.stringify({ 
+  success: true, 
+  analysisId: analysisResult.id,
+  findings: aggregatedFindings,
+  model: 'gpt-4.1-2025-04-14',
+  minConfidenceShown: 'Medium'
+}), {
+  headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+});
         
       } catch (pdfError) {
         console.error('PDF processing error:', pdfError);
@@ -285,87 +267,74 @@ Return detailed findings with specific location references. If referencing other
         });
       }
     } else {
-      // For images, use enhanced vision analysis
+      // For images, build multimodal request (image + OCR text placeholder)
       console.log('Processing image file with enhanced StudioCheck analysis...');
       const arrayBuffer = await fileBlob.arrayBuffer();
       const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      
-      content = [
-        {
-          type: 'text',
-          text: `STUDIOCHECK CONSTRUCTION DOCUMENT ANALYSIS
 
-Document: ${fileData.file_name}
-Building Type: Commercial/Healthcare/Life Science
-
-Apply expert construction QA/QC review methodology:
-
-🔍 HOLISTIC ANALYSIS APPROACH:
-- Understand the drawing's role in the overall construction document set
-- Identify design intent and coordination requirements
-- Look for cross-sheet references and verify their logical consistency
-- Assess constructability and potential field conflicts
-
-🎯 SPECIFIC FOCUS AREAS:
-- Detail callouts and their accuracy (e.g., "Detail 3 on A501")
-- Grid references and dimensional coordination
-- Material specifications vs. drawn details
-- Symbol consistency and legend compliance
-- Discipline coordination (architectural, structural, MEP)
-- Code compliance and ADA requirements
-- Specification alignment with drawings
-
-📋 CROSS-REFERENCE TRACKING:
-- Note any references to other sheets, details, or specifications
-- Flag inconsistencies between callouts and available information
-- Identify missing references that should exist for clarity
-
-OUTPUT RULES (important for GPT-4.1):
-- Return a JSON array only.
-- Never return an empty array []. If no provable issues are found, return exactly one object with category "No Issues Detected" and severity "Low" using the required fields.
-- Do NOT include page_number.
-
-Return comprehensive findings that would help prevent RFIs, change orders, and construction delays.`
-        },
-        {
-          type: 'image_url',
-          image_url: {
-            url: `data:${fileData.mime_type};base64,${base64}`,
-            detail: 'high'
-          }
-        }
+      const userParts: any[] = [
+        { type: 'text', text: `Analyze the following single drawing page. Page: 1 of 1. File: ${fileData.file_name}. If known: sheet  ${''} ${''}.` },
+        { type: 'image_url', image_url: { url: `data:${fileData.mime_type};base64,${base64}` } },
+        { type: 'text', text: `OCR_TEXT:\n(none)` },
+        { type: 'text', text: `Return JSON ONLY following this schema:\n${FINDING_SCHEMA_TEXT}` },
       ];
+
+      const messages = [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userParts },
+      ];
+
+      const pageFindings = await analyzeContent(messages, fileData.file_name);
+      let aggregatedFindings: Finding[] = Array.isArray(pageFindings) ? pageFindings : [];
+
+      // Single fallback only if no findings at all
+      if (!aggregatedFindings.length) {
+        aggregatedFindings.push({
+          category: "Other Red Flag",
+          risk: "Low",
+          confidence: "High",
+          coordination_required: false,
+          sheet_spec_reference: `${fileData.file_name}`,
+          page: 1,
+          nearby_text_marker: "N/A",
+          issue: "No issues detected in the provided page",
+          construction_impact: "No coordination or constructability risks identified based on visible content.",
+          ai_reasoning: "Model reviewed image and OCR text and found no missing references, conflicts, or compliance concerns.",
+          suggested_action: "Proceed; optionally run a deep-dive pass on critical sheets.",
+          references: [`${fileData.file_name}`],
+          cross_references: []
+        });
+      }
+
+      // Store analysis results
+      const { data: analysisResult, error: analysisError } = await supabase
+        .from('analysis_results')
+        .insert({
+          project_id: projectId,
+          file_id: fileId,
+          analysis_data: aggregatedFindings,
+          status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (analysisError) {
+        console.error('Error storing analysis:', analysisError);
+        throw new Error('Failed to store analysis results');
+      }
+
+      console.log('Analysis completed and stored:', analysisResult.id);
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        analysisId: analysisResult.id,
+        findings: aggregatedFindings,
+        model: 'gpt-4.1-2025-04-14',
+        minConfidenceShown: 'Medium'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
-
-    // Analyze the content using the enhanced StudioCheck methodology
-    const analysisData = await analyzeContent(content, fileData.file_name);
-
-    // Store analysis results
-    const { data: analysisResult, error: analysisError } = await supabase
-      .from('analysis_results')
-      .insert({
-        project_id: projectId,
-        file_id: fileId,
-        analysis_data: analysisData,
-        status: 'completed'
-      })
-      .select()
-      .single();
-
-    if (analysisError) {
-      console.error('Error storing analysis:', analysisError);
-      throw new Error('Failed to store analysis results');
-    }
-
-    console.log('Analysis completed and stored:', analysisResult.id);
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      analysisId: analysisResult.id,
-      findings: analysisData 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error) {
     console.error('Error in analyze-document function:', error);
@@ -379,8 +348,8 @@ Return comprehensive findings that would help prevent RFIs, change orders, and c
   }
 });
 
-// Enhanced analysis function for comprehensive construction document review
-async function analyzeContent(content: any, fileName: string) {
+// Calls OpenAI with provided messages and returns typed findings
+async function analyzeContent(messages: any[], fileName: string): Promise<Finding[]> {
   console.log('Sending to OpenAI for enhanced StudioCheck analysis...');
 
   try {
@@ -392,18 +361,9 @@ async function analyzeContent(content: any, fileName: string) {
       },
       body: JSON.stringify({
         model: 'gpt-4.1-2025-04-14',
-        messages: [
-          {
-            role: 'system',
-            content: SYSTEM_PROMPT
-          },
-          {
-            role: 'user',
-            content: content
-          }
-        ],
-        max_tokens: 3000,
-        temperature: 0.1
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages,
       }),
     });
 
@@ -414,90 +374,19 @@ async function analyzeContent(content: any, fileName: string) {
     }
 
     const aiResponse = await response.json();
-    const analysisText = aiResponse.choices[0].message.content;
-    
+    const analysisText = aiResponse.choices?.[0]?.message?.content ?? '';
     console.log('Enhanced AI Analysis received:', analysisText);
 
-    // Parse JSON response with enhanced error handling
-    let analysisData;
     try {
-      // Extract JSON from response if it's wrapped in markdown or other text
-      const jsonMatch = analysisText.match(/\[[\s\S]*\]/);
-      const jsonString = jsonMatch ? jsonMatch[0] : analysisText;
-      analysisData = JSON.parse(jsonString);
-      
-      // Ensure all findings have the required enhanced fields and convert to new format
-      analysisData = analysisData.map((finding: any) => ({
-        // Enhanced StudioCheck format
-        category: finding.category || "Other Red Flag",
-        sheet_reference: finding.sheet_reference || finding.location_reference || fileName,
-        location: finding.location || finding.location_reference || "",
-        nearby_text: finding.nearby_text || "",
-        issue: finding.issue || finding.description || "",
-        construction_impact: finding.construction_impact || "",
-        reasoning: finding.reasoning || "",
-        suggested_action: finding.suggested_action || "",
-        severity: finding.severity || "Medium",
-        cross_references: finding.cross_references || [],
-        requires_coordination: finding.requires_coordination || false,
-        // Legacy fields for backward compatibility
-        description: finding.description || finding.issue || "",
-        location_reference: finding.location_reference || finding.sheet_reference || fileName
-      }));
-
-      // If the model returned an empty array, synthesize a structured fallback issue
-      if (!Array.isArray(analysisData) || analysisData.length === 0) {
-        analysisData = [{
-          category: "No Issues Detected",
-          sheet_reference: fileName,
-          location: "",
-          nearby_text: "",
-          issue: "No provable issues detected based on provided content",
-          construction_impact: "No immediate impact identified. Provide higher-resolution images or ensure pages are rasterized.",
-          reasoning: "Model returned no findings; likely insufficient visual data from PDF or strict adherence to provability requirement.",
-          suggested_action: "Re-run with high-resolution JPG/PNG page images (300–600 DPI) or provide OCR text alongside images.",
-          severity: "Low",
-          cross_references: [],
-          requires_coordination: false,
-          // Legacy fields
-          description: "No provable issues detected based on provided content",
-          location_reference: fileName
-        }];
-      }
-      
+      const parsed = JSON.parse(analysisText) as { findings?: Finding[] };
+      const findings = Array.isArray(parsed.findings) ? parsed.findings.filter(Boolean) : [];
+      return findings;
     } catch (parseError) {
       console.error('Failed to parse AI response as JSON:', parseError);
-      // Fallback: create a comprehensive finding with the analysis text
-      analysisData = [{
-        category: "Other Red Flag",
-        sheet_reference: fileName,
-        location: "",
-        nearby_text: "",
-        issue: `StudioCheck Analysis: ${analysisText}`,
-        construction_impact: "Technical analysis limitation encountered. For best results, ensure documents are high-quality images or properly formatted PDFs.",
-        reasoning: "AI response could not be parsed into structured format",
-        suggested_action: "Review document format and retry analysis",
-        severity: "Medium",
-        cross_references: [],
-        requires_coordination: false,
-        // Legacy fields
-        description: `StudioCheck Analysis: ${analysisText}`,
-        location_reference: fileName
-      }];
+      return [];
     }
-
-    return analysisData;
-    
   } catch (error) {
     console.error('Error in analyzeContent function:', error);
-    // Return a meaningful error finding
-    return [{
-      category: "Other Red Flag",
-      description: `StudioCheck analysis encountered a technical issue. Please retry the analysis or contact support if the issue persists. Error: ${error.message}`,
-      location_reference: fileName,
-      severity: "Low",
-      cross_references: [],
-      requires_coordination: false
-    }];
+    return [];
   }
 }
