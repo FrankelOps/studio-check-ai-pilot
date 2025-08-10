@@ -10,7 +10,7 @@ const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Rasterization and caching config
 const PDFCO_API_KEY = Deno.env.get('PDFCO_API_KEY') || '';
-const USE_RASTERIZER = (Deno.env.get('USE_RASTERIZER') || 'false').toLowerCase() === 'true';
+const USE_RASTERIZER = /^(1|true|yes|on)$/i.test(Deno.env.get('USE_RASTERIZER') || '');
 const RASTERIZE_DPI = Number(Deno.env.get('RASTERIZE_DPI') || 400);
 const SIGN_TTL = Number(Deno.env.get('RASTERIZE_TTL_SECONDS') || 3600);
 
