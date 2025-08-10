@@ -169,6 +169,12 @@ serve(async (req) => {
   try {
     const { fileId, projectId } = await req.json();
     console.log('Analyzing document:', { fileId, projectId });
+    console.log("cfg", {
+      useRasterizer: (Deno.env.get('USE_RASTERIZER') || 'false'),
+      dpi: (Deno.env.get('RASTERIZE_DPI') || ''),
+      ttl: (Deno.env.get('RASTERIZE_TTL_SECONDS') || ''),
+      hasPdfcoKey: !!Deno.env.get('PDFCO_API_KEY')
+    });
 
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -232,10 +238,10 @@ const totalPages = pageCount;
 const pdfSignedUrl = await createSignedUrlFromProjectFiles(fileData.file_path, SIGN_TTL);
 let pageImages: { page: number; signedUrl: string }[] = [];
 
+console.log("rasterize:gate", { USE_RASTERIZER });
 if (USE_RASTERIZER) {
   pageImages = await ensurePageImages(projectId, fileId, pdfSignedUrl);
 }
-
 const PAGE_LIMIT = 10;
 const plannedPages = pageImages.length ? pageImages.length : totalPages;
 const pagesToProcess = Math.min(plannedPages, PAGE_LIMIT);
