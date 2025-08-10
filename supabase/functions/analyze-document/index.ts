@@ -9,7 +9,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Rasterization and caching config
-const PDFCO_API_KEY = Deno.env.get('PDFCO_API_KEY') || '';
+const PDFCO_API_KEY = (Deno.env.get('PDFCO_API_KEY') || '').trim();
 const USE_RASTERIZER = /^(1|true|yes|on)$/i.test(Deno.env.get('USE_RASTERIZER') || '');
 const RASTERIZE_DPI = Number(Deno.env.get('RASTERIZE_DPI') || 400);
 const SIGN_TTL = Number(Deno.env.get('RASTERIZE_TTL_SECONDS') || 3600);
@@ -175,10 +175,10 @@ serve(async (req) => {
       ttl: (Deno.env.get('RASTERIZE_TTL_SECONDS') || ''),
       hasPdfcoKey: !!Deno.env.get('PDFCO_API_KEY')
     });
+    console.log('cfg:pdfco', { keyLen: PDFCO_API_KEY.length });
 
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey);
-
     // Get file information
     const { data: fileData, error: fileError } = await supabase
       .from('uploaded_files')
