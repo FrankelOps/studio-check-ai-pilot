@@ -384,117 +384,148 @@ const Project = () => {
                           </span>
                         </div>
                         
-                        {analysis.analysis_data && Array.isArray(analysis.analysis_data) && analysis.analysis_data.length > 0 ? (
-                          <div className="space-y-4">
-                            {analysis.analysis_data.map((finding: any, index: number) => (
-                              <div key={index} className="bg-slate-50 rounded-lg p-5 border-l-4 border-l-red-500">
-                                <div className="flex items-start justify-between mb-4">
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant={getSeverityColor(finding.severity) as any}>
-                                      {finding.category}
-                                    </Badge>
-                                    {finding.severity && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {finding.severity} Risk
+{(() => {
+                          // Normalize analysis_data to a consistent findings array
+                          const raw = analysis.analysis_data;
+                          const findings = Array.isArray(raw)
+                            ? raw
+                            : Array.isArray(raw?.findings)
+                              ? raw.findings
+                              : [];
+                          // Map legacy fallback items (with description/severity/location_reference) to the new schema fields
+                          const normalizeFinding = (f: any) => {
+                            if (!f.issue && f.description) {
+                              return {
+                                category: f.category ?? "Other Red Flag",
+                                risk: (["High", "Medium", "Low"].includes(f.severity) ? f.severity : "Low"),
+                                confidence: "High",
+                                coordination_required: Boolean(f.requires_coordination),
+                                sheet_spec_reference: f.location_reference ?? "N/A",
+                                page: f.page ?? 1,
+                                nearby_text_marker: f.nearby_text_marker ?? "N/A",
+                                issue: f.description,
+                                construction_impact: f.construction_impact ?? "May affect coordination until clarified.",
+                                ai_reasoning: f.ai_reasoning ?? "Legacy fallback item normalized for display.",
+                                suggested_action: f.suggested_action ?? "Re-run analysis with rasterization enabled.",
+                                references: Array.isArray(f.references) ? f.references : (f.location_reference ? [f.location_reference] : []),
+                                cross_references: Array.isArray(f.cross_references) ? f.cross_references : []
+                              };
+                            }
+                            return f;
+                          };
+                          const normalizedFindings = findings.map(normalizeFinding);
+                          return normalizedFindings.length > 0 ? (
+                            <div className="space-y-4">
+                              {normalizedFindings.map((finding: any, index: number) => (
+                                <div key={index} className="bg-slate-50 rounded-lg p-5 border-l-4 border-l-red-500">
+                                  <div className="flex items-start justify-between mb-4">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant={getSeverityColor(finding.severity) as any}>
+                                        {finding.category}
+                                      </Badge>
+                                      {finding.severity && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {finding.severity} Risk
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {finding.requires_coordination && (
+                                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        Coordination Required
                                       </Badge>
                                     )}
                                   </div>
-                                  {finding.requires_coordination && (
-                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
-                                      <AlertTriangle className="h-3 w-3 mr-1" />
-                                      Coordination Required
-                                    </Badge>
-                                  )}
-                                </div>
 
-                                {/* Enhanced Analysis Display */}
-                                {finding.sheet_reference && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Sheet/Spec Reference</span>
-                                    <p className="text-sm text-slate-800 font-medium">{finding.sheet_reference}</p>
-                                  </div>
-                                )}
-
-                                {finding.location && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Location</span>
-                                    <p className="text-sm text-slate-700">{finding.location}</p>
-                                  </div>
-                                )}
-
-                                {finding.nearby_text && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Nearby Text/Marker</span>
-                                    <p className="text-sm text-slate-700 bg-slate-200 px-2 py-1 rounded font-mono">{finding.nearby_text}</p>
-                                  </div>
-                                )}
-
-                                {finding.issue && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Issue</span>
-                                    <p className="text-sm text-slate-800 font-medium">{finding.issue}</p>
-                                  </div>
-                                )}
-
-                                {finding.construction_impact && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Construction Impact</span>
-                                    <p className="text-sm text-slate-700 leading-relaxed">{finding.construction_impact}</p>
-                                  </div>
-                                )}
-
-                                {finding.reasoning && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">AI Reasoning</span>
-                                    <p className="text-sm text-slate-600 italic leading-relaxed">{finding.reasoning}</p>
-                                  </div>
-                                )}
-
-                                {finding.suggested_action && (
-                                  <div className="mb-3">
-                                    <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Suggested Action</span>
-                                    <p className="text-sm text-slate-800 font-medium bg-blue-50 px-3 py-2 rounded border-l-2 border-blue-400">{finding.suggested_action}</p>
-                                  </div>
-                                )}
-
-                                {/* Fallback for legacy description field */}
-                                {finding.description && !finding.issue && (
-                                  <p className="text-sm text-slate-700 mb-3 leading-relaxed">
-                                    {finding.description}
-                                  </p>
-                                )}
-                                
-                                <div className="space-y-2 pt-2 border-t border-slate-200">
-                                  {(finding.location_reference && !finding.location) && (
-                                    <div className="flex items-center text-xs text-slate-600">
-                                      <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
-                                      <span className="font-medium">Reference:</span>
-                                      <span className="ml-1">{finding.location_reference}</span>
+                                  {/* Enhanced Analysis Display */}
+                                  {finding.sheet_reference && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Sheet/Spec Reference</span>
+                                      <p className="text-sm text-slate-800 font-medium">{finding.sheet_reference}</p>
                                     </div>
+                                  )}
+
+                                  {finding.location && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Location</span>
+                                      <p className="text-sm text-slate-700">{finding.location}</p>
+                                    </div>
+                                  )}
+
+                                  {finding.nearby_text && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Nearby Text/Marker</span>
+                                      <p className="text-sm text-slate-700 bg-slate-200 px-2 py-1 rounded font-mono">{finding.nearby_text}</p>
+                                    </div>
+                                  )}
+
+                                  {finding.issue && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Issue</span>
+                                      <p className="text-sm text-slate-800 font-medium">{finding.issue}</p>
+                                    </div>
+                                  )}
+
+                                  {finding.construction_impact && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Construction Impact</span>
+                                      <p className="text-sm text-slate-700 leading-relaxed">{finding.construction_impact}</p>
+                                    </div>
+                                  )}
+
+                                  {finding.reasoning && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">AI Reasoning</span>
+                                      <p className="text-sm text-slate-600 italic leading-relaxed">{finding.reasoning}</p>
+                                    </div>
+                                  )}
+
+                                  {finding.suggested_action && (
+                                    <div className="mb-3">
+                                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Suggested Action</span>
+                                      <p className="text-sm text-slate-800 font-medium bg-blue-50 px-3 py-2 rounded border-l-2 border-blue-400">{finding.suggested_action}</p>
+                                    </div>
+                                  )}
+
+                                  {/* Fallback for legacy description field */}
+                                  {finding.description && !finding.issue && (
+                                    <p className="text-sm text-slate-700 mb-3 leading-relaxed">
+                                      {finding.description}
+                                    </p>
                                   )}
                                   
-                                  {finding.cross_references && finding.cross_references.length > 0 && (
-                                    <div className="flex items-start text-xs text-blue-600">
-                                      <FileText className="h-3 w-3 mr-1 flex-shrink-0 mt-0.5" />
-                                      <span className="font-medium">Cross-References:</span>
-                                      <div className="ml-2 flex flex-wrap gap-1">
-                                        {finding.cross_references.map((ref: string, refIdx: number) => (
-                                          <Badge key={refIdx} variant="outline" className="text-xs px-1 py-0">
-                                            {ref}
-                                          </Badge>
-                                        ))}
+                                  <div className="space-y-2 pt-2 border-t border-slate-200">
+                                    {(finding.location_reference && !finding.location) && (
+                                      <div className="flex items-center text-xs text-slate-600">
+                                        <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                                        <span className="font-medium">Reference:</span>
+                                        <span className="ml-1">{finding.location_reference}</span>
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
+                                    
+                                    {finding.cross_references && finding.cross_references.length > 0 && (
+                                      <div className="flex items-start text-xs text-blue-600">
+                                        <FileText className="h-3 w-3 mr-1 flex-shrink-0 mt-0.5" />
+                                        <span className="font-medium">Cross-References:</span>
+                                        <div className="ml-2 flex flex-wrap gap-1">
+                                          {finding.cross_references.map((ref: string, refIdx: number) => (
+                                            <Badge key={refIdx} variant="outline" className="text-xs px-1 py-0">
+                                              {ref}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-500">
-                            No issues found in this document.
-                          </p>
-                        )}
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              No issues found in this document.
+                            </p>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
