@@ -64,12 +64,13 @@ async function pdfcoRasterizeToPngUrls(pdfSignedUrl: string, dpi = RASTERIZE_DPI
       }
       console.log('rasterize:result-url', { url: resultUrl });
       const resultResp = await fetch(resultUrl);
-      const result = await resultResp.json().catch(() => ({}));
-      const urls: string[] = result?.urls || [];
+      const raw = await resultResp.json().catch(() => ({}));
+      const urls = parsePdfcoResult(raw);
       if (!urls.length) {
-        console.error('rasterize:fail', result);
+        console.error('rasterize:empty', raw);
         throw new Error('PDF.co returned no page URLs');
       }
+      console.log('rasterize:urls', { count: urls.length });
       return urls;
     }
 
@@ -113,6 +114,20 @@ async function listCachedPageImages(prefix: string): Promise<RasterizeResult[]> 
   return out.sort((a, b) => a.page - b.page);
 }
 
+function parsePdfcoResult(json: unknown): string[] {
+  // Accept either { urls: string[] } or a top-level string[] (PDF.co sometimes returns array)
+  try {
+    if (Array.isArray(json)) {
+      return json.filter((u) => typeof u === 'string');
+    }
+    if (json && typeof json === 'object' && 'urls' in (json as any)) {
+      const urls = (json as any).urls;
+      if (Array.isArray(urls)) return urls.filter((u) => typeof u === 'string');
+    }
+  } catch (_) {}
+  return [];
+}
+
 async function ensurePageImages(projectId: string, fileId: string, pdfSignedUrl: string): Promise<RasterizeResult[]> {
   const prefix = `${projectId}/${fileId}/`;
   const cached = await listCachedPageImages(prefix);
@@ -120,18 +135,24 @@ async function ensurePageImages(projectId: string, fileId: string, pdfSignedUrl:
     console.log('rasterize:cache-hit', { pages: cached.length });
     return cached;
   }
-  const pagesRange = `1-${PAGE_LIMIT}`;
-  console.log('rasterize:start', { dpi: RASTERIZE_DPI, pagesRange });
-  const pngUrls = await pdfcoRasterizeToPngUrls(pdfSignedUrl, RASTERIZE_DPI, pagesRange);
-  const results: RasterizeResult[] = [];
-  for (let i = 0; i < pngUrls.length; i++) {
-    const resp = await fetch(pngUrls[i]);
-    const dest = `${prefix}page-${i + 1}.png`;
-    const signed = await uploadPngToStorage(resp, dest);
-    results.push({ page: i + 1, signedUrl: signed, storagePath: dest });
+  try {
+    const pagesRange = `1-${PAGE_LIMIT}`;
+    console.log('rasterize:start', { dpi: RASTERIZE_DPI, pagesRange });
+    const pngUrls = await pdfcoRasterizeToPngUrls(pdfSignedUrl, RASTERIZE_DPI, pagesRange);
+    const results: RasterizeResult[] = [];
+    for (let i = 0; i < pngUrls.length; i++) {
+      const resp = await fetch(pngUrls[i]);
+      const dest = `${prefix}page-${i + 1}.png`;
+      const signed = await uploadPngToStorage(resp, dest);
+      results.push({ page: i + 1, signedUrl: signed, storagePath: dest });
+    }
+    console.log('rasterize:done', { pages: results.length });
+    return results;
+  } catch (e) {
+    console.error('rasterize:error', e);
+    // GRACEFUL FALLBACK: return [] so the analysis continues in OCR-only mode
+    return [];
   }
-  console.log('rasterize:done', { pages: results.length });
-  return results;
 }
 
 const corsHeaders = {
