@@ -519,7 +519,7 @@ return new Response(JSON.stringify({
         throw new Error('Failed to store analysis results');
       }
 
-      console.log('Analysis completed and stored:', analysisResult.id);
+      console.log('analysis:stored', { id: analysisResult.id, count: aggregatedFindings.length });
 
       return new Response(JSON.stringify({ 
         success: true, 
