@@ -387,7 +387,11 @@ const { data: analysisResult, error: analysisError } = await supabase
   .insert({
     project_id: projectId,
     file_id: fileId,
-    analysis_data: aggregatedFindings,
+    analysis_data: {
+      findings: aggregatedFindings,
+      model: 'gpt-4.1-2025-04-14',
+      minConfidenceShown: 'Medium'
+    },
     status: 'completed'
   })
   .select()
@@ -397,6 +401,8 @@ if (analysisError) {
   console.error('Error storing analysis:', analysisError);
   throw new Error('Failed to store analysis results');
 }
+
+console.log('analysis:stored', { id: analysisResult.id, count: aggregatedFindings.length });
 
 return new Response(JSON.stringify({ 
   success: true, 
@@ -411,32 +417,43 @@ return new Response(JSON.stringify({
       } catch (pdfError) {
         console.error('PDF processing error:', pdfError);
         // Fallback to basic PDF handling
-        const analysisData = [{
-          category: "Other Red Flag",
-          description: "PDF processing encountered technical limitations. For comprehensive StudioCheck analysis, please convert your PDF pages to high-resolution JPG or PNG images. This enables our AI to perform detailed visual analysis of construction drawings, symbols, dimensions, and cross-references.",
-          location_reference: fileData.file_name,
-          severity: "Medium",
-          cross_references: [],
-          requires_coordination: false
-        }];
+const fallbackFinding = {
+  category: "Other Red Flag",
+  risk: "Low" as const,
+  confidence: "High" as const,
+  coordination_required: false,
+  sheet_spec_reference: fileData.file_name,
+  page: 1,
+  nearby_text_marker: "N/A",
+  issue: "Rasterization or PDF processing failed; analysis ran in reduced mode.",
+  construction_impact: "Visual checks may be incomplete without page images.",
+  ai_reasoning: "An upstream rasterization step failed or timed out, so the analyzer could not review page imagery.",
+  suggested_action: "Re-run with rasterization enabled; if persistent, try PAGE_LIMIT=5 or DPI=300.",
+  references: [fileData.file_name],
+  cross_references: []
+};
 
-        const { data: analysisResult, error: analysisError } = await supabase
-          .from('analysis_results')
-          .insert({
-            project_id: projectId,
-            file_id: fileId,
-            analysis_data: analysisData,
-            status: 'completed'
-          })
-          .select()
-          .single();
+const { data: analysisResult, error: analysisError } = await supabase
+  .from('analysis_results')
+  .insert({
+    project_id: projectId,
+    file_id: fileId,
+    analysis_data: {
+      findings: [fallbackFinding],
+      model: 'gpt-4.1-2025-04-14',
+      minConfidenceShown: 'Medium'
+    },
+    status: 'completed'
+  })
+  .select()
+  .single();
 
-        if (analysisError) throw new Error('Failed to store analysis results');
+if (analysisError) throw new Error('Failed to store analysis results');
 
-        return new Response(JSON.stringify({ 
+return new Response(JSON.stringify({ 
           success: true, 
           analysisId: analysisResult.id,
-          findings: analysisData 
+          findings: [fallbackFinding]
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -487,7 +504,11 @@ return new Response(JSON.stringify({
         .insert({
           project_id: projectId,
           file_id: fileId,
-          analysis_data: aggregatedFindings,
+          analysis_data: {
+            findings: aggregatedFindings,
+            model: 'gpt-4.1-2025-04-14',
+            minConfidenceShown: 'Medium'
+          },
           status: 'completed'
         })
         .select()
