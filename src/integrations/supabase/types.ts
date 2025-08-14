@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
@@ -70,6 +70,136 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analysis_jobs: {
+        Row: {
+          error: string | null
+          file_id: string
+          finished_at: string | null
+          id: string
+          model: string | null
+          params: Json
+          pass: number
+          processed_pages: number
+          project_id: string
+          started_at: string | null
+          status: string
+          total_pages: number
+        }
+        Insert: {
+          error?: string | null
+          file_id: string
+          finished_at?: string | null
+          id?: string
+          model?: string | null
+          params?: Json
+          pass?: number
+          processed_pages?: number
+          project_id: string
+          started_at?: string | null
+          status?: string
+          total_pages?: number
+        }
+        Update: {
+          error?: string | null
+          file_id?: string
+          finished_at?: string | null
+          id?: string
+          model?: string | null
+          params?: Json
+          pass?: number
+          processed_pages?: number
+          project_id?: string
+          started_at?: string | null
+          status?: string
+          total_pages?: number
+        }
+        Relationships: []
+      }
+      analysis_page_results: {
+        Row: {
+          created_at: string | null
+          duration_ms: number | null
+          error: string | null
+          findings: Json
+          job_id: string
+          model: string | null
+          page: number
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          duration_ms?: number | null
+          error?: string | null
+          findings?: Json
+          job_id: string
+          model?: string | null
+          page: number
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          duration_ms?: number | null
+          error?: string | null
+          findings?: Json
+          job_id?: string
+          model?: string | null
+          page?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_page_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analysis_page_tasks: {
+        Row: {
+          created_at: string | null
+          job_id: string
+          last_error: string | null
+          locked_at: string | null
+          locked_by: string | null
+          page: number
+          retries: number
+          state: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          job_id: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          page: number
+          retries?: number
+          state?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          job_id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
+          page?: number
+          retries?: number
+          state?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_page_tasks_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -306,6 +436,56 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      page_assets: {
+        Row: {
+          created_at: string | null
+          dpi: number | null
+          expires_at: string | null
+          hash: string | null
+          height: number | null
+          image_url: string | null
+          job_id: string
+          ocr_url: string | null
+          page: number
+          updated_at: string | null
+          width: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          dpi?: number | null
+          expires_at?: string | null
+          hash?: string | null
+          height?: number | null
+          image_url?: string | null
+          job_id: string
+          ocr_url?: string | null
+          page: number
+          updated_at?: string | null
+          width?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          dpi?: number | null
+          expires_at?: string | null
+          hash?: string | null
+          height?: number | null
+          image_url?: string | null
+          job_id?: string
+          ocr_url?: string | null
+          page?: number
+          updated_at?: string | null
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_assets_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -554,23 +734,23 @@ export type Database = {
       }
       search_transcript_embeddings: {
         Args: {
-          query_embedding: string
-          match_threshold?: number
           match_count?: number
+          match_threshold?: number
           project_id_param?: string
+          query_embedding: string
         }
         Returns: {
-          id: string
-          design_log_id: string
           content_text: string
           content_type: string
-          similarity: number
-          type: string
-          date: string
-          meeting_event: string
-          summary: string
-          rationale: string
           created_at: string
+          date: string
+          design_log_id: string
+          id: string
+          meeting_event: string
+          rationale: string
+          similarity: number
+          summary: string
+          type: string
         }[]
       }
       sparsevec_out: {
