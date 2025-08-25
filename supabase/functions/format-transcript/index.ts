@@ -172,7 +172,7 @@ Create a well-structured dialogue with intelligent speaker attribution and prope
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-2025-04-14',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: 'You are an expert transcript formatting assistant specializing in speaker attribution and conversation analysis. Focus on creating accurate, readable transcripts with intelligent speaker detection and proper formatting.' },
           { role: 'user', content: prompt }

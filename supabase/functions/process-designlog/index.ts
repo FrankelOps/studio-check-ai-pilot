@@ -56,7 +56,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-2025-04-14',
+        model: 'gpt-4o',
         messages: [
           {
             role: 'system',
@@ -240,9 +240,9 @@ OUTPUT FORMAT:
             headers: {
               'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
               'Content-Type': 'application/json',
-            },
+          },
             body: JSON.stringify({
-              model: 'gpt-4.1-2025-04-14',
+              model: 'gpt-4o',
               messages: [
                 {
                   role: 'system',
