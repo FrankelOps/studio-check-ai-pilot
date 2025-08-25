@@ -103,7 +103,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
         messages: [
           {
             role: 'system',

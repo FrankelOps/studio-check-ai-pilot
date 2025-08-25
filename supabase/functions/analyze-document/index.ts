@@ -389,7 +389,7 @@ if (!aggregatedFindings.length) {
         file_id: fileId,
         analysis_data: {
           findings: aggregatedFindings,
-          model: 'gpt-4o',
+          model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
           minConfidenceShown: 'Medium'
         },
         status: 'completed'
@@ -408,7 +408,7 @@ return new Response(JSON.stringify({
   success: true, 
   analysisId: analysisResult.id,
   findings: aggregatedFindings,
-  model: 'gpt-4o',
+  model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
   minConfidenceShown: 'Medium'
 }), {
   headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -440,7 +440,7 @@ const { data: analysisResult, error: analysisError } = await supabase
     file_id: fileId,
     analysis_data: {
       findings: [fallbackFinding],
-      model: 'gpt-4o',
+      model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
       minConfidenceShown: 'Medium'
     },
     status: 'completed'
@@ -506,7 +506,7 @@ return new Response(JSON.stringify({
           file_id: fileId,
                   analysis_data: {
           findings: aggregatedFindings,
-          model: 'gpt-4o',
+          model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
           minConfidenceShown: 'Medium'
         },
           status: 'completed'
@@ -525,7 +525,7 @@ return new Response(JSON.stringify({
         success: true, 
         analysisId: analysisResult.id,
         findings: aggregatedFindings,
-        model: 'gpt-4o',
+        model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
         minConfidenceShown: 'Medium'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -556,7 +556,7 @@ async function analyzeContent(messages: any[], fileName: string): Promise<Findin
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: Deno.env.get("OPENAI_MODEL") ?? "gpt-4o",
         temperature: 0,
         response_format: { type: 'json_object' },
         messages,
