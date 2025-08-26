@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1';
 import { fromUint8Array } from 'https://esm.sh/pdf2pic@3.0.3';
+import { generateRequestId, startTimer, endTimer, logInfo, logError } from '../_shared/logger.ts';
 
 const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -233,8 +234,23 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = generateRequestId();
+  const logContext = {
+    request_id: requestId,
+    function_name: 'analyze-document',
+    data: { endpoint: '/analyze-document' }
+  };
+
   try {
+    startTimer(logContext);
+    
     const { fileId, projectId } = await req.json();
+    
+    // Update context with project and file info
+    logContext.project_id = projectId;
+    logContext.file_id = fileId;
+    
+    logInfo('Starting document analysis', logContext);
     console.log('Analyzing document:', { fileId, projectId });
     console.log("cfg", {
       useRasterizer: (Deno.env.get('USE_RASTERIZER') || 'false'),
@@ -246,6 +262,7 @@ serve(async (req) => {
 
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey);
+    
     // Get file information
     const { data: fileData, error: fileError } = await supabase
       .from('uploaded_files')
@@ -254,8 +271,11 @@ serve(async (req) => {
       .single();
 
     if (fileError || !fileData) {
+      logError('File not found in database', logContext, fileError);
       throw new Error('File not found');
     }
+
+    logInfo('File retrieved from database', { ...logContext, data: { fileName: fileData.file_name, mimeType: fileData.mime_type } });
 
     // Get file from storage
     const { data: fileBlob, error: storageError } = await supabase.storage
@@ -263,10 +283,14 @@ serve(async (req) => {
       .download(fileData.file_path);
 
     if (storageError || !fileBlob) {
+      logError('Failed to download file from storage', logContext, storageError);
       throw new Error('Could not download file');
     }
 
+    logInfo('File downloaded from storage', { ...logContext, data: { fileSize: fileBlob.size } });
+
     if (!openAIApiKey) {
+      logError('OpenAI API key not configured', logContext);
       throw new Error('OpenAI API key not configured');
     }
 
@@ -275,6 +299,7 @@ serve(async (req) => {
     let isPDF = fileData.mime_type === 'application/pdf';
     
     if (isPDF) {
+      logInfo('Processing PDF file - converting to images for analysis', logContext);
       console.log('Processing PDF file - converting to images for analysis...');
       
       try {
@@ -283,6 +308,7 @@ serve(async (req) => {
         const pdfDoc = await PDFDocument.load(arrayBuffer);
         const pageCount = pdfDoc.getPageCount();
         
+        logInfo(`PDF loaded with ${pageCount} pages`, { ...logContext, data: { pageCount } });
         console.log(`PDF has ${pageCount} pages, processing each page...`);
         
         // First, extract sheet titles/numbers from all pages to build context
@@ -315,13 +341,19 @@ if (!probe.ok) {
 }
 console.log("pdf:signed-url:ok");
 
+logInfo('PDF signed URL created and validated', logContext);
+
 console.log("rasterize:gate", { USE_RASTERIZER });
 if (USE_RASTERIZER) {
+  logInfo('Starting PDF rasterization', { ...logContext, data: { dpi: RASTERIZE_DPI, pageLimit: PAGE_LIMIT } });
   pageImages = await ensurePageImages(projectId, fileId, pdfSignedUrl);
+  logInfo(`PDF rasterization completed with ${pageImages.length} pages`, logContext);
 }
 /* Using PAGE_LIMIT from env */
 const plannedPages = pageImages.length ? pageImages.length : totalPages;
 const pagesToProcess = Math.min(plannedPages, PAGE_LIMIT);
+
+logInfo(`Processing ${pagesToProcess} pages for analysis`, { ...logContext, data: { plannedPages, pagesToProcess, hasImages: pageImages.length > 0 } });
 
 const allPageFindings: Finding[][] = [];
 
@@ -333,6 +365,8 @@ for (let i = 0; i < pagesToProcess; i++) {
 
     const pageImageSignedUrl = pageImages[pageIndex]?.signedUrl;
     const ocrTextForPage = '';
+
+    logInfo(`Analyzing page ${pageIndex + 1}`, { ...logContext, data: { page: pageIndex + 1, hasImage: !!pageImageSignedUrl } });
 
     const userContentParts: any[] = [
       { type: 'text', text: `Analyze the following single drawing page. Page: ${pageIndex + 1} of ${plannedPages}. File: ${fileData.file_name}. If known: sheet ${sheetNumber} ${sheetTitle}` },
@@ -356,7 +390,10 @@ for (let i = 0; i < pagesToProcess; i++) {
 
     const pageFindings = await analyzeContent(messages, `${fileData.file_name} (Page ${pageIndex + 1})`);
     if (Array.isArray(pageFindings)) allPageFindings.push(pageFindings);
+    
+    logInfo(`Page ${pageIndex + 1} analysis completed`, { ...logContext, data: { page: pageIndex + 1, findingsCount: pageFindings.length } });
   } catch (pageError) {
+    logError(`Error processing PDF page ${i + 1}`, { ...logContext, data: { page: i + 1 } }, pageError);
     console.error(`Error processing PDF page ${i + 1}:`, pageError);
   }
 }
@@ -364,6 +401,7 @@ for (let i = 0; i < pagesToProcess; i++) {
 // Flatten and single fallback only if all pages produced zero findings
 let aggregatedFindings: Finding[] = allPageFindings.flat().filter(Boolean) as Finding[];
 if (!aggregatedFindings.length) {
+  logInfo('No findings detected, adding fallback finding', logContext);
   aggregatedFindings.push({
     category: "Other Red Flag",
     risk: "Low",
@@ -380,6 +418,8 @@ if (!aggregatedFindings.length) {
     cross_references: []
   });
 }
+
+logInfo(`Analysis completed with ${aggregatedFindings.length} total findings`, { ...logContext, data: { totalFindings: aggregatedFindings.length } });
 
     // Store the results
     const { data: analysisResult, error: analysisError } = await supabase
@@ -398,11 +438,15 @@ if (!aggregatedFindings.length) {
   .single();
 
 if (analysisError) {
+  logError('Failed to store analysis results in database', logContext, analysisError);
   console.error('Error storing analysis:', analysisError);
   throw new Error('Failed to store analysis results');
 }
 
+logInfo('Analysis results stored successfully', { ...logContext, data: { analysisId: analysisResult.id, findingsCount: aggregatedFindings.length } });
 console.log('analysis:stored', { id: analysisResult.id, count: aggregatedFindings.length });
+
+endTimer(requestId, true);
 
 return new Response(JSON.stringify({ 
   success: true, 
@@ -415,6 +459,7 @@ return new Response(JSON.stringify({
 });
         
       } catch (pdfError) {
+        logError('PDF processing failed, using fallback mode', logContext, pdfError);
         console.error('PDF processing error:', pdfError);
         // Fallback to basic PDF handling
 const fallbackFinding = {
@@ -450,6 +495,10 @@ const { data: analysisResult, error: analysisError } = await supabase
 
 if (analysisError) throw new Error('Failed to store analysis results');
 
+logInfo('Fallback analysis completed and stored', { ...logContext, data: { analysisId: analysisResult.id, fallbackMode: true } });
+
+endTimer(requestId, true);
+
 return new Response(JSON.stringify({ 
           success: true, 
           analysisId: analysisResult.id,
@@ -460,6 +509,7 @@ return new Response(JSON.stringify({
       }
     } else {
       // For images, build multimodal request (image + OCR text placeholder)
+      logInfo('Processing image file with enhanced StudioCheck analysis', logContext);
       console.log('Processing image file with enhanced StudioCheck analysis...');
       const arrayBuffer = await fileBlob.arrayBuffer();
       const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
@@ -481,6 +531,7 @@ return new Response(JSON.stringify({
 
       // Single fallback only if no findings at all
       if (!aggregatedFindings.length) {
+        logInfo('No findings detected in image, adding fallback finding', logContext);
         aggregatedFindings.push({
           category: "Other Red Flag",
           risk: "Low",
@@ -497,6 +548,8 @@ return new Response(JSON.stringify({
           cross_references: []
         });
       }
+
+      logInfo(`Image analysis completed with ${aggregatedFindings.length} findings`, { ...logContext, data: { findingsCount: aggregatedFindings.length } });
 
       // Store analysis results
       const { data: analysisResult, error: analysisError } = await supabase
@@ -515,11 +568,15 @@ return new Response(JSON.stringify({
         .single();
 
       if (analysisError) {
+        logError('Failed to store image analysis results', logContext, analysisError);
         console.error('Error storing analysis:', analysisError);
         throw new Error('Failed to store analysis results');
       }
 
+      logInfo('Image analysis results stored successfully', { ...logContext, data: { analysisId: analysisResult.id, findingsCount: aggregatedFindings.length } });
       console.log('analysis:stored', { id: analysisResult.id, count: aggregatedFindings.length });
+
+      endTimer(requestId, true);
 
       return new Response(JSON.stringify({ 
         success: true, 
@@ -533,7 +590,11 @@ return new Response(JSON.stringify({
     }
 
   } catch (error) {
+    logError('Function execution failed', logContext, error);
     console.error('Error in analyze-document function:', error);
+    
+    endTimer(requestId, false, error);
+    
     return new Response(JSON.stringify({ 
       error: error.message,
       success: false 

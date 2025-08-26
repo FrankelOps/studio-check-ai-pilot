@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { generateRequestId, startTimer, endTimer, logInfo, logError } from '../_shared/logger.ts';
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -62,16 +63,40 @@ const FINDING_SCHEMA_TEXT = `
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
 
+  const requestId = generateRequestId();
+  const logContext: {
+    request_id: string;
+    function_name: string;
+    analysis_id?: string;
+    data: { endpoint: string };
+  } = {
+    request_id: requestId,
+    function_name: 'analysis-worker',
+    data: { endpoint: '/analysis-worker' }
+  };
+
   try {
+    startTimer(logContext);
+    
     const { jobId, batchSize } = await req.json();
     if (!jobId) throw new Error("jobId is required");
     const limit = Number(batchSize ?? DEFAULT_BATCH);
+
+    // Update context with job info
+    logContext.analysis_id = jobId;
+    
+    logInfo('Starting analysis worker job', { ...logContext, data: { jobId, batchSize: limit } });
 
     const sb = createClient(supabaseUrl, serviceKey);
 
     // Load job
     const { data: job, error: je } = await sb.from("analysis_jobs").select("*").eq("id", jobId).single();
-    if (je || !job) throw new Error("job not found");
+    if (je || !job) {
+      logError('Job not found in database', logContext, je);
+      throw new Error("job not found");
+    }
+
+    logInfo('Job loaded from database', { ...logContext, data: { totalPages: job.total_pages, status: job.status, model: job.model } });
 
     // Lock next N queued tasks (coarse-grained optimistic lock)
     const { data: queued, error: qe } = await sb
@@ -81,19 +106,27 @@ serve(async (req) => {
       .eq("state", "queued")
       .order("page", { ascending: true })
       .limit(limit);
-    if (qe) throw qe;
+    if (qe) {
+      logError('Failed to query queued tasks', logContext, qe);
+      throw qe;
+    }
 
     if (!queued?.length) {
       // Nothing left to do; if job is fully processed, mark complete.
       const newStatus = job.processed_pages >= job.total_pages ? "complete" : job.status;
       if (newStatus !== job.status) {
         await sb.from("analysis_jobs").update({ status: newStatus, finished_at: new Date().toISOString() }).eq("id", jobId);
+        logInfo(`Job status updated to ${newStatus}`, logContext);
       }
+      
+      endTimer(requestId, true);
       return json({ success: true, jobId, locked: 0, message: "no queued tasks" });
     }
 
     const workerId = crypto.randomUUID();
     const pages = queued.map((t) => t.page);
+
+    logInfo(`Locking ${pages.length} pages for processing`, { ...logContext, data: { workerId, pages, batchSize: limit } });
 
     // Mark tasks as processing
     await sb.from("analysis_page_tasks")
@@ -104,6 +137,9 @@ serve(async (req) => {
 
     // Ensure assets exist for these pages via assets-prep (created in Prompt 4)
     if (!assetsPrepUrl) throw new Error("ASSETS_PREP_URL not set");
+    
+    logInfo('Calling assets-prep to ensure page assets exist', { ...logContext, data: { assetsPrepUrl, pages } });
+    
     const r = await fetch(assetsPrepUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -111,7 +147,10 @@ serve(async (req) => {
     });
     if (!r.ok) {
       const txt = await r.text();
+      logError('Assets-prep failed', { ...logContext, data: { status: r.status, response: txt } });
       console.warn("assets-prep failed", txt);
+    } else {
+      logInfo('Assets-prep completed successfully', logContext);
     }
 
     // Read assets
@@ -120,6 +159,8 @@ serve(async (req) => {
       .select("page,image_url,ocr_url")
       .eq("job_id", jobId)
       .in("page", pages);
+
+    logInfo(`Retrieved ${assetsRows?.length || 0} page assets`, { ...logContext, data: { pages, assetsCount: assetsRows?.length } });
 
     const assetsMap = new Map<number, { image_url?: string; ocr_text?: string }>();
     for (const row of assetsRows ?? []) {
@@ -142,10 +183,13 @@ serve(async (req) => {
         const assets = assetsMap.get(page);
         if (!assets?.image_url) {
           const msg = "missing image_url for page";
+          logError(`Missing image URL for page ${page}`, { ...logContext, data: { page, assets } });
           await markTask(sb, jobId, page, "error", msg);
           await upsertResult(sb, jobId, page, [], job.model ?? "gpt-4o-mini", "error", msg, 0);
           continue;
         }
+
+        logInfo(`Starting analysis of page ${page}`, { ...logContext, data: { page, hasImage: !!assets.image_url, hasOcr: !!assets.ocr_text } });
 
         const start = performance.now();
         const findings = await analyzePage({
@@ -163,10 +207,13 @@ serve(async (req) => {
         await markTask(sb, jobId, page, "done");
         doneCount++;
 
+        logInfo(`Page ${page} analysis completed`, { ...logContext, data: { page, findingsCount: findings.length, duration, status } });
+
         // Increment job progress
         await sb.rpc("noop"); // placeholder to keep session alive (optional)
       } catch (e) {
         const err = String(e?.message ?? e);
+        logError(`Error processing page ${page}`, { ...logContext, data: { page } }, e);
         await markTask(sb, jobId, page, "error", err);
         await upsertResult(sb, jobId, page, [], job.model ?? "gpt-4o-mini", "error", err, 0);
       }
@@ -180,13 +227,35 @@ serve(async (req) => {
       .eq("state", "done");
     const processed = (countRows as unknown as { count: number } | null)?.count ?? null;
 
+    const newProcessedCount = processed ?? job.processed_pages + doneCount;
+    const newStatus = (processed ?? 0) >= job.total_pages ? "complete" : "processing";
+
+    logInfo(`Updating job progress`, { ...logContext, data: { 
+      processedPages: newProcessedCount, 
+      totalPages: job.total_pages, 
+      newStatus,
+      batchProcessed: doneCount 
+    } });
+
     await sb.from("analysis_jobs").update({
-      processed_pages: processed ?? job.processed_pages + doneCount,
-      status: (processed ?? 0) >= job.total_pages ? "complete" : "processing",
+      processed_pages: newProcessedCount,
+      status: newStatus,
     }).eq("id", jobId);
+
+    logInfo(`Batch processing completed successfully`, { ...logContext, data: { 
+      pagesProcessed: doneCount, 
+      totalProcessed: newProcessedCount,
+      jobStatus: newStatus 
+    } });
+
+    endTimer(requestId, true);
 
     return json({ success: true, jobId, locked: pages.length, processed: doneCount });
   } catch (e) {
+    logError('Analysis worker function failed', logContext, e);
+    
+    endTimer(requestId, false, e);
+    
     return json({ success: false, error: String(e?.message ?? e) }, 500);
   }
 });
