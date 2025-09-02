@@ -45,14 +45,13 @@ export const titleBlockValidator: QAModule = {
   async run(input: QAModuleInput): Promise<QAFinding[]> {
     const findings: QAFinding[] = [];
 
-    // Pages to scan (keep it cheap while we iterate)
-    const pages = input.pages?.length ? input.pages : [1, 2];
+    // Decide which pages to inspect; if none provided, do first 5 for speed
+    const pages = input.pages?.length ? input.pages : [1,2,3,4,5];
 
     for (const pageNum of pages) {
       try {
-        // Rasterize -> OCR the title-block region
-        const { text: pageText, imageUrl: pageImageUrl, engine } =
-          await this.extractTitleBlockRegionText(input.fileUrl, pageNum);
+        const pageImageUrl = await this.rasterizePage(input.fileUrl, pageNum);
+        const pageText = await this.openAiExtractTitleBlock(pageImageUrl);
 
         const sheetNumbers = extractSheetNumbers(pageText);
         const title = findSheetTitle(pageText);
@@ -67,11 +66,10 @@ export const titleBlockValidator: QAModule = {
             severity: 'error',
             message: 'Missing or invalid sheet number in title block',
             evidence: {
-              ocr_engine: engine,
-              text_sample: pageText.slice(0, 400),
+              ocr_engine: 'openai-vision',
+              text_sample: pageText.slice(0, 200),
               page_image_url: pageImageUrl,
-              // normalized bbox for title-block bottom-right 20%
-              bbox: { x: 0.8, y: 0.8, w: 0.2, h: 0.2 },
+              bbox: { x: 0.8, y: 0.8, w: 0.2, h: 0.2 }, // bottom-right 20%
               notes: { patterns_tested: SHEET_NUMBER_PATTERNS.map(p => p.source) }
             }
           });
@@ -86,8 +84,8 @@ export const titleBlockValidator: QAModule = {
             severity: 'error',
             message: 'Missing sheet title in title block',
             evidence: {
-              ocr_engine: engine,
-              text_sample: pageText.slice(0, 400),
+              ocr_engine: 'openai-vision',
+              text_sample: pageText.slice(0, 200),
               page_image_url: pageImageUrl,
               bbox: { x: 0.8, y: 0.8, w: 0.2, h: 0.2 }
             }
@@ -103,103 +101,76 @@ export const titleBlockValidator: QAModule = {
             severity: 'warn',
             message: 'No revision block markers found',
             evidence: {
-              ocr_engine: engine,
-              text_sample: pageText.slice(0, 400),
+              ocr_engine: 'openai-vision',
+              text_sample: pageText.slice(0, 200),
               page_image_url: pageImageUrl,
               bbox: { x: 0.8, y: 0.8, w: 0.2, h: 0.2 },
-              notes: { keywords: ['REV', 'REVISION', 'REVISIONS', 'REV.'] }
+              notes: { keywords: ['REV','REVISION','REVISIONS','REV.'] }
             }
           });
         }
+
       } catch (err) {
-        // Soft-fail per page, continue other pages
+        // soft-fail per page; continue other pages
         console.error(`Title-block OCR failed on page ${pageNum}:`, err);
+        continue;
       }
     }
 
     return findings;
   },
 
-  // Unified helper: rasterize -> OCR -> return text + imageUrl + engine
-  async extractTitleBlockRegionText(fileUrl: string, pageNumber: number): Promise<{ text: string; imageUrl: string; engine: string }> {
-    // 1) Rasterize this page via PDF.co (sync, one page)
-    const pageImageUrl = await this.rasterizePage(fileUrl, pageNumber);
+  async openAiExtractTitleBlock(pageImageUrl: string): Promise<string> {
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('OPENAI_APIKEY') || '';
+    if (!OPENAI_API_KEY) throw new Error('Missing OPENAI_API_KEY in environment');
 
-    // 2) OCR via OpenAI Vision — keep tokens low, short instruction
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 20000); // 20s safety timeout
+    const prompt = `
+  You are reading a construction drawing page image.
+  Extract ONLY the text contained in the title block region (~bottom-right 20% of the page).
+  Return raw text lines only (no commentary). Focus on: sheet number (e.g., A101), sheet title, and any revision text.
+  `;
 
-    const model = Deno.env.get('OPENAI_MODEL') || 'gpt-4o'; // reuse your env model
-    const apiKey = Deno.env.get('OPENAI_API_KEY') || '';
-
-    if (!apiKey) throw new Error('OPENAI_API_KEY not set');
-
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
       body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: 'Extract raw text ONLY from the bottom-right title block area of this page. No commentary.' },
-              { type: 'image_url', image_url: { url: pageImageUrl } }
-            ]
-          }
-        ],
-        max_tokens: 350,
-        temperature: 0,
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: pageImageUrl } }
+        ]}],
+        max_tokens: 600,
+        temperature: 0.1
       })
-    }).finally(() => clearTimeout(t));
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`OpenAI Vision failed: ${res.status} ${body}`);
-    }
-
-    const data = await res.json().catch(() => ({} as any));
-    const text: string = data?.choices?.[0]?.message?.content ?? '';
-
-    // Fallback to mock if empty (keeps the module useful while wiring)
-    const finalText = text?.trim().length ? text : this.mockFallback(pageNumber);
-
-    return { text: finalText, imageUrl: pageImageUrl, engine: finalText === text ? 'openai-vision' : 'mock' };
-  },
-
-  // Minimal rasterize for 1 page via PDF.co
-  async rasterizePage(fileUrl: string, pageNumber: number): Promise<string> {
-    const key = Deno.env.get('PDFCO_API_KEY') || Deno.env.get('PDFCO_APIKEY') || '';
-    if (!key) throw new Error('PDFCO_API_KEY not set');
-
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 20000); // 20s safety timeout
-
-    const resp = await fetch('https://api.pdf.co/v1/pdf/convert/to/png', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key
-      },
-      body: JSON.stringify({
-        url: fileUrl,
-        pages: String(pageNumber),
-        dpi: 300
-      })
-    }).finally(() => clearTimeout(t));
+    });
 
     if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`PDF.co rasterize failed: ${resp.status} ${body}`);
+      const txt = await resp.text().catch(()=> '');
+      throw new Error(`OpenAI Vision failed (${resp.status}): ${txt}`);
     }
+    const json = await resp.json();
+    return String(json?.choices?.[0]?.message?.content ?? '');
+  },
 
-    const result = await resp.json().catch(() => ({} as any));
-    const url = result?.urls?.[0] || result?.url;
+  async rasterizePage(fileUrl: string, pageNumber: number): Promise<string> {
+    const PDFCO_API_KEY = Deno.env.get('PDFCO_API_KEY') || Deno.env.get('PDFCO_APIKEY') || '';
+    if (!PDFCO_API_KEY) throw new Error('Missing PDFCO_API_KEY in environment');
+
+    const res = await fetch('https://api.pdf.co/v1/pdf/convert/to/png', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': PDFCO_API_KEY
+      },
+      body: JSON.stringify({ url: fileUrl, pages: String(pageNumber), dpi: 300 })
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(()=> '');
+      throw new Error(`PDF.co rasterization failed (${res.status}): ${txt}`);
+    }
+    const data = await res.json();
+    const url = data.urls?.[0] || data.url;
     if (!url) throw new Error('PDF.co response missing image URL');
     return url;
   },
