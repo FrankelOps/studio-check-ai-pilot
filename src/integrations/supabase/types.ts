@@ -246,6 +246,51 @@ export type Database = {
           },
         ]
       }
+      check_execution_logs: {
+        Row: {
+          analysis_id: string | null
+          created_at: string
+          data: Json | null
+          duration_ms: number | null
+          function_name: string
+          id: string
+          level: string | null
+          message: string | null
+          project_id: string | null
+          request_id: string | null
+          success: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          analysis_id?: string | null
+          created_at?: string
+          data?: Json | null
+          duration_ms?: number | null
+          function_name: string
+          id?: string
+          level?: string | null
+          message?: string | null
+          project_id?: string | null
+          request_id?: string | null
+          success?: boolean | null
+          user_id?: string | null
+        }
+        Update: {
+          analysis_id?: string | null
+          created_at?: string
+          data?: Json | null
+          duration_ms?: number | null
+          function_name?: string
+          id?: string
+          level?: string | null
+          message?: string | null
+          project_id?: string | null
+          request_id?: string | null
+          success?: boolean | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       decision_feedback: {
         Row: {
           content: string | null
@@ -487,6 +532,42 @@ export type Database = {
           },
         ]
       }
+      parser_coverage_logs: {
+        Row: {
+          coverage_pct: number | null
+          created_at: string
+          data: Json | null
+          file_id: string | null
+          id: string
+          pages_parsed: number | null
+          pages_total: number | null
+          parser_name: string
+          project_id: string | null
+        }
+        Insert: {
+          coverage_pct?: number | null
+          created_at?: string
+          data?: Json | null
+          file_id?: string | null
+          id?: string
+          pages_parsed?: number | null
+          pages_total?: number | null
+          parser_name: string
+          project_id?: string | null
+        }
+        Update: {
+          coverage_pct?: number | null
+          created_at?: string
+          data?: Json | null
+          file_id?: string | null
+          id?: string
+          pages_parsed?: number | null
+          pages_total?: number | null
+          parser_name?: string
+          project_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -582,6 +663,50 @@ export type Database = {
         }
         Relationships: []
       }
+      qa_results: {
+        Row: {
+          analysis_id: string | null
+          created_at: string | null
+          evidence: Json | null
+          id: string
+          message: string
+          module_id: string
+          page_number: number | null
+          rule_id: string
+          severity: string
+        }
+        Insert: {
+          analysis_id?: string | null
+          created_at?: string | null
+          evidence?: Json | null
+          id?: string
+          message: string
+          module_id: string
+          page_number?: number | null
+          rule_id: string
+          severity: string
+        }
+        Update: {
+          analysis_id?: string | null
+          created_at?: string | null
+          evidence?: Json | null
+          id?: string
+          message?: string
+          module_id?: string
+          page_number?: number | null
+          rule_id?: string
+          severity?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qa_results_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_results"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transcript_embeddings: {
         Row: {
           content_text: string
@@ -672,65 +797,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      binary_quantize: {
-        Args: { "": string } | { "": unknown }
-        Returns: unknown
-      }
       get_current_user_role: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
-      halfvec_avg: {
-        Args: { "": number[] }
-        Returns: unknown
-      }
-      halfvec_out: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      halfvec_send: {
-        Args: { "": unknown }
-        Returns: string
-      }
-      halfvec_typmod_in: {
-        Args: { "": unknown[] }
-        Returns: number
-      }
-      hnsw_bit_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hnsw_halfvec_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hnsw_sparsevec_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      hnswhandler: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      ivfflat_bit_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      ivfflat_halfvec_support: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      ivfflathandler: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      l2_norm: {
-        Args: { "": unknown } | { "": unknown }
-        Returns: number
-      }
-      l2_normalize: {
-        Args: { "": string } | { "": unknown } | { "": unknown }
-        Returns: string
+      is_project_actor: { Args: { pid: string }; Returns: boolean }
+      is_project_owner_or_member: {
+        Args: { project_uuid: string }
+        Returns: boolean
       }
       search_transcript_embeddings: {
         Args: {
@@ -752,42 +826,6 @@ export type Database = {
           summary: string
           type: string
         }[]
-      }
-      sparsevec_out: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      sparsevec_send: {
-        Args: { "": unknown }
-        Returns: string
-      }
-      sparsevec_typmod_in: {
-        Args: { "": unknown[] }
-        Returns: number
-      }
-      vector_avg: {
-        Args: { "": number[] }
-        Returns: string
-      }
-      vector_dims: {
-        Args: { "": string } | { "": unknown }
-        Returns: number
-      }
-      vector_norm: {
-        Args: { "": string }
-        Returns: number
-      }
-      vector_out: {
-        Args: { "": string }
-        Returns: unknown
-      }
-      vector_send: {
-        Args: { "": string }
-        Returns: string
-      }
-      vector_typmod_in: {
-        Args: { "": unknown[] }
-        Returns: number
       }
     }
     Enums: {
