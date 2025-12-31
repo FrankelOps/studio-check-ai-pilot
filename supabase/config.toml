@@ -1,1 +1,49 @@
 project_id = "hycggwcoczwclmymbeth"
+
+[functions.analyze-document]
+verify_jwt = false
+
+[functions.analysis-worker]
+verify_jwt = false
+
+[functions.chat-analysis]
+verify_jwt = false
+
+[functions.chat-designlog]
+verify_jwt = false
+
+[functions.enqueue-analysis]
+verify_jwt = false
+
+[functions.format-transcript]
+verify_jwt = false
+
+[functions.generate-embeddings]
+verify_jwt = false
+
+[functions.handle-decision-feedback]
+verify_jwt = false
+
+[functions.process-designlog]
+verify_jwt = false
+
+[functions.regenerate-summary]
+verify_jwt = false
+
+[functions.transcribe-audio]
+verify_jwt = false
+
+[functions.qa-pdfco-probe]
+verify_jwt = false
+
+[functions.qa-runner]
+verify_jwt = false
+
+[functions.assets-prep]
+verify_jwt = false
+
+[functions.studiocheck-preflight]
+verify_jwt = false
+
+[functions.studiocheck-run]
+verify_jwt = false
