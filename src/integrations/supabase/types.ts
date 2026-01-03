@@ -807,6 +807,7 @@ export type Database = {
         Args: { project_uuid: string }
         Returns: boolean
       }
+      safe_extract_project_id: { Args: { path: string }; Returns: string }
       search_transcript_embeddings: {
         Args: {
           match_count?: number
