@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowDown, MapPin, FileText, AlertTriangle, Trash2, MessageSquare, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { ArrowDown, MapPin, FileText, AlertTriangle, Trash2, MessageSquare, CheckCircle, Clock, XCircle, ExternalLink, Download, Copy } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FileUpload } from '@/components/FileUpload';
@@ -22,6 +22,7 @@ interface Project {
 interface UploadedFile {
   id: string;
   file_name: string;
+  file_path: string;
   file_size: number;
   uploaded_at: string;
 }
@@ -153,6 +154,86 @@ const ProjectContent = () => {
         variant: "destructive",
         title: "Delete failed",
         description: error.message,
+      });
+    }
+  };
+
+  const handleOpenFile = async (file: UploadedFile) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('project-files')
+        .createSignedUrl(file.file_path, 120); // 2 minutes
+
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error('Failed to generate URL');
+
+      // Log for debugging (Deliverable C)
+      console.log(`[DEBUG] Signed URL for "${file.file_name}" (expires in 120s):`, data.signedUrl);
+
+      window.open(data.signedUrl, '_blank');
+    } catch (error: any) {
+      console.error('Open file error:', error);
+      toast({
+        variant: "destructive",
+        title: "Unable to access file",
+        description: "The file could not be opened. Please try again.",
+      });
+    }
+  };
+
+  const handleDownloadFile = async (file: UploadedFile) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('project-files')
+        .createSignedUrl(file.file_path, 120, { download: file.file_name }); // 2 minutes, triggers download
+
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error('Failed to generate URL');
+
+      // Log for debugging (Deliverable C)
+      console.log(`[DEBUG] Download URL for "${file.file_name}" (expires in 120s):`, data.signedUrl);
+
+      // Create a temporary link and click it
+      const link = document.createElement('a');
+      link.href = data.signedUrl;
+      link.download = file.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      console.error('Download file error:', error);
+      toast({
+        variant: "destructive",
+        title: "Unable to download file",
+        description: "The file could not be downloaded. Please try again.",
+      });
+    }
+  };
+
+  const handleCopyLink = async (file: UploadedFile) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('project-files')
+        .createSignedUrl(file.file_path, 300); // 5 minutes for copy
+
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error('Failed to generate URL');
+
+      await navigator.clipboard.writeText(data.signedUrl);
+      
+      // Log for debugging (Deliverable C)
+      console.log(`[DEBUG] Copied signed URL for "${file.file_name}" (expires in 300s):`, data.signedUrl);
+
+      toast({
+        title: "Link copied",
+        description: "Secure link copied (expires in 5 minutes).",
+      });
+    } catch (error: any) {
+      console.error('Copy link error:', error);
+      toast({
+        variant: "destructive",
+        title: "Unable to copy link",
+        description: "The link could not be copied. Please try again.",
       });
     }
   };
@@ -323,11 +404,11 @@ const ProjectContent = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                     {files.map((file) => (
+                    {files.map((file) => (
                        <div key={file.id} className="flex items-center justify-between p-3 border rounded-lg">
-                         <div className="flex-1">
+                         <div className="flex-1 min-w-0">
                            <div className="flex items-center gap-2 mb-1">
-                             <p className="font-medium text-slate-900">{file.file_name}</p>
+                             <p className="font-medium text-slate-900 truncate">{file.file_name}</p>
                              {getStatusBadge(getFileStatus(file.id))}
                            </div>
                            <p className="text-sm text-slate-500">
@@ -335,11 +416,39 @@ const ProjectContent = () => {
                              {' '}Uploaded {new Date(file.uploaded_at).toLocaleDateString()}
                            </p>
                          </div>
-                         <div className="flex items-center gap-2">
+                         <div className="flex items-center gap-1 flex-shrink-0">
                            <Button
                              size="sm"
-                             variant="outline"
+                             variant="ghost"
+                             onClick={() => handleOpenFile(file)}
+                             title="Open in new tab"
+                             className="text-slate-600 hover:text-slate-900"
+                           >
+                             <ExternalLink className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             size="sm"
+                             variant="ghost"
+                             onClick={() => handleDownloadFile(file)}
+                             title="Download file"
+                             className="text-slate-600 hover:text-slate-900"
+                           >
+                             <Download className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             size="sm"
+                             variant="ghost"
+                             onClick={() => handleCopyLink(file)}
+                             title="Copy secure link (expires in 5 min)"
+                             className="text-slate-600 hover:text-slate-900"
+                           >
+                             <Copy className="h-4 w-4" />
+                           </Button>
+                           <Button
+                             size="sm"
+                             variant="ghost"
                              onClick={() => handleDeleteFile(file.id, file.file_name)}
+                             title="Delete file"
                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
                            >
                              <Trash2 className="h-4 w-4" />
@@ -348,7 +457,7 @@ const ProjectContent = () => {
                              size="sm"
                              onClick={() => handleAnalyze(file.id)}
                              disabled={analyzing === file.id}
-                             className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
+                             className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600 ml-1"
                            >
                              {analyzing === file.id ? 'Analyzing...' : 'Analyze'}
                            </Button>
