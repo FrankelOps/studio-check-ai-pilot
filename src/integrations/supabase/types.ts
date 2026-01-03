@@ -801,6 +801,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      get_project_id_from_job: { Args: { job_uuid: string }; Returns: string }
       is_project_actor: { Args: { pid: string }; Returns: boolean }
       is_project_owner_or_member: {
         Args: { project_uuid: string }
