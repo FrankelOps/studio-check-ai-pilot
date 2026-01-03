@@ -7,8 +7,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowDown } from 'lucide-react';
+import { ArrowDown, LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+// Map Supabase auth errors to user-friendly messages
+const getLoginErrorMessage = (error: any): string => {
+  const msg = error?.message?.toLowerCase() || '';
+  
+  if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+    return 'Incorrect email or password. Please check and try again.';
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'Please check your email and click the confirmation link before signing in.';
+  }
+  if (msg.includes('too many requests') || msg.includes('rate limit')) {
+    return 'Too many sign-in attempts. Please wait a few minutes and try again.';
+  }
+  if (msg.includes('user not found')) {
+    return 'No account found with this email. Please sign up first.';
+  }
+  if (msg.includes('network') || msg.includes('fetch')) {
+    return 'Connection error. Please check your internet and try again.';
+  }
+  return 'Unable to sign in. Please try again or contact support.';
+};
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -44,20 +66,23 @@ const Login = () => {
 
       navigate('/dashboard');
     } catch (error: any) {
-      let message = "There was a problem signing in. Please try again.";
-      if (error.message?.includes('Invalid login credentials')) {
-        message = "Invalid email or password. Please check your credentials.";
-      } else if (error.message?.includes('Email not confirmed')) {
-        message = "Please confirm your email before signing in.";
-      }
       toast({
         variant: "destructive",
         title: "Sign in failed",
-        description: message,
+        description: getLoginErrorMessage(error),
       });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleClearSession = async () => {
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      await supabase.auth.signOut();
+    }
+    window.location.href = '/login';
   };
 
   // Show loading while checking auth
@@ -136,8 +161,22 @@ const Login = () => {
               </p>
             </div>
 
+            {/* Clear Session Button */}
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full text-slate-500 hover:text-slate-700"
+                onClick={handleClearSession}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Clear session & switch accounts
+              </Button>
+            </div>
+
             {/* Legal Disclaimer */}
-            <div className="mt-6 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-start space-x-2">
                 <ArrowDown className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-800">
