@@ -6,6 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowDown } from 'lucide-react';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
 import { supabase } from '@/integrations/supabase/client';
+import { AuthGuard } from '@/components/AuthGuard';
+import { UserMenu } from '@/components/UserMenu';
 
 interface Project {
   id: string;
@@ -14,7 +16,7 @@ interface Project {
   created_at: string;
 }
 
-const Dashboard = () => {
+const DashboardContent = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +64,7 @@ const Dashboard = () => {
                 <ArrowDown className="h-4 w-4 mr-2" />
                 Notifications
               </Button>
+              <UserMenu />
             </div>
           </div>
         </div>
@@ -169,6 +172,14 @@ const Dashboard = () => {
         </div>
       </main>
     </div>
+  );
+};
+
+const Dashboard = () => {
+  return (
+    <AuthGuard>
+      <DashboardContent />
+    </AuthGuard>
   );
 };
 

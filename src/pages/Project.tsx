@@ -8,6 +8,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { FileUpload } from '@/components/FileUpload';
 import { AnalysisChat } from '@/components/AnalysisChat';
+import { AuthGuard } from '@/components/AuthGuard';
+import { UserMenu } from '@/components/UserMenu';
 
 interface Project {
   id: string;
@@ -32,7 +34,7 @@ interface AnalysisResult {
   };
 }
 
-const Project = () => {
+const ProjectContent = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -251,6 +253,7 @@ const Project = () => {
                   DesignLog
                 </Button>
               </Link>
+              <UserMenu />
             </div>
           </div>
         </div>
@@ -537,6 +540,14 @@ const Project = () => {
         </div>
       </main>
     </div>
+  );
+};
+
+const Project = () => {
+  return (
+    <AuthGuard>
+      <ProjectContent />
+    </AuthGuard>
   );
 };
 
