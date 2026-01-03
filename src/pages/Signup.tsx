@@ -8,8 +8,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ArrowDown } from 'lucide-react';
+import { ArrowDown, CheckCircle, Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+
+// Map Supabase auth errors to user-friendly messages
+const getSignupErrorMessage = (error: any): string => {
+  const msg = error?.message?.toLowerCase() || '';
+  
+  if (msg.includes('already registered') || msg.includes('already exists')) {
+    return 'This email is already registered. Please sign in instead.';
+  }
+  if (msg.includes('password') && msg.includes('weak')) {
+    return 'Password is too weak. Use at least 8 characters with letters and numbers.';
+  }
+  if (msg.includes('invalid email')) {
+    return 'Please enter a valid email address.';
+  }
+  if (msg.includes('rate limit') || msg.includes('too many')) {
+    return 'Too many attempts. Please wait a few minutes and try again.';
+  }
+  if (msg.includes('network') || msg.includes('fetch')) {
+    return 'Connection error. Please check your internet and try again.';
+  }
+  return 'Unable to create account. Please try again or contact support.';
+};
 
 const Signup = () => {
   const [email, setEmail] = useState('');
@@ -17,6 +39,7 @@ const Signup = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState<{ email: string; needsConfirmation: boolean } | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
@@ -52,7 +75,7 @@ const Signup = () => {
     setLoading(true);
 
     try {
-      const redirectUrl = `${window.location.origin}/`;
+      const redirectUrl = `${window.location.origin}/login`;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -63,21 +86,16 @@ const Signup = () => {
 
       if (error) throw error;
 
-      toast({
-        title: "Account created!",
-        description: "Please check your email to verify your account.",
-      });
-
-      navigate('/login');
+      // Check if email confirmation is required
+      // If user.identities is empty, email confirmation is required
+      const needsConfirmation = !data.user?.identities?.length || data.user?.identities?.length === 0;
+      
+      setSignupSuccess({ email, needsConfirmation });
     } catch (error: any) {
-      let message = "There was a problem creating your account. Please try again.";
-      if (error.message?.includes('already registered')) {
-        message = "This email is already registered. Please sign in instead.";
-      }
       toast({
         variant: "destructive",
         title: "Sign up failed",
-        description: message,
+        description: getSignupErrorMessage(error),
       });
     } finally {
       setLoading(false);
@@ -96,6 +114,63 @@ const Signup = () => {
   // Don't render form if already authenticated (will redirect)
   if (user) {
     return null;
+  }
+
+  // Success state after signup
+  if (signupSuccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <Link to="/" className="inline-flex items-center space-x-2">
+              <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-orange-500 rounded-lg flex items-center justify-center">
+                <ArrowDown className="h-6 w-6 text-white" />
+              </div>
+              <span className="text-2xl font-bold text-slate-900">StudioCheck</span>
+            </Link>
+          </div>
+
+          <Card className="border-slate-200 shadow-lg">
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                  {signupSuccess.needsConfirmation ? (
+                    <Mail className="h-8 w-8 text-green-600" />
+                  ) : (
+                    <CheckCircle className="h-8 w-8 text-green-600" />
+                  )}
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900">Account Created!</h2>
+                <p className="text-slate-600">
+                  {signupSuccess.needsConfirmation ? (
+                    <>
+                      We've sent a confirmation email to <strong>{signupSuccess.email}</strong>.
+                      <br />
+                      Please check your inbox and click the link to activate your account.
+                    </>
+                  ) : (
+                    <>
+                      Your account is ready! You can now sign in with <strong>{signupSuccess.email}</strong>.
+                    </>
+                  )}
+                </p>
+                <Button 
+                  className="w-full bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-700 hover:to-orange-600"
+                  onClick={() => navigate('/login')}
+                >
+                  Go to Sign In
+                </Button>
+                {signupSuccess.needsConfirmation && (
+                  <p className="text-xs text-slate-500">
+                    Didn't receive the email? Check your spam folder or try signing up again.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   return (
