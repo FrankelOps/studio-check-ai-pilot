@@ -10,6 +10,7 @@ import { FileUpload } from '@/components/FileUpload';
 import { AnalysisChat } from '@/components/AnalysisChat';
 import { AuthGuard } from '@/components/AuthGuard';
 import { UserMenu } from '@/components/UserMenu';
+import { isValidUUID } from '@/lib/validators';
 
 interface Project {
   id: string;
@@ -43,8 +44,14 @@ const ProjectContent = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  // Early validation: if projectId is not a valid UUID, skip all queries
+  const isValidProjectId = isValidUUID(projectId);
+
   const fetchProjectData = async () => {
-    if (!projectId) return;
+    if (!projectId || !isValidProjectId) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -88,11 +95,7 @@ const ProjectContent = () => {
 
     } catch (error: any) {
       console.error('Error fetching project data:', error);
-      toast({
-        variant: "destructive",
-        title: "Error loading project",
-        description: error.message,
-      });
+      // Don't show toast for access/query errors - just show "not found" UI
     } finally {
       setLoading(false);
     }
