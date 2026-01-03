@@ -158,19 +158,21 @@ const ProjectContent = () => {
     }
   };
 
+  const [openFileUrls, setOpenFileUrls] = useState<Record<string, string>>({});
+
   const handleOpenFile = async (file: UploadedFile) => {
     try {
       const { data, error } = await supabase.storage
         .from('project-files')
-        .createSignedUrl(file.file_path, 120); // 2 minutes
+        .createSignedUrl(file.file_path, 600); // 10 minutes
 
       if (error) throw error;
       if (!data?.signedUrl) throw new Error('Failed to generate URL');
 
-      // Log for debugging (Deliverable C)
-      console.log(`[DEBUG] Signed URL for "${file.file_name}" (expires in 120s):`, data.signedUrl);
+      console.log(`[DEBUG] Signed URL for "${file.file_name}" (expires in 600s):`, data.signedUrl);
 
-      window.open(data.signedUrl, '_blank');
+      // Store URL and trigger click on the hidden anchor
+      setOpenFileUrls(prev => ({ ...prev, [file.id]: data.signedUrl }));
     } catch (error: any) {
       console.error('Open file error:', error);
       toast({
@@ -185,15 +187,13 @@ const ProjectContent = () => {
     try {
       const { data, error } = await supabase.storage
         .from('project-files')
-        .createSignedUrl(file.file_path, 120, { download: file.file_name }); // 2 minutes, triggers download
+        .createSignedUrl(file.file_path, 600, { download: file.file_name }); // 10 minutes
 
       if (error) throw error;
       if (!data?.signedUrl) throw new Error('Failed to generate URL');
 
-      // Log for debugging (Deliverable C)
-      console.log(`[DEBUG] Download URL for "${file.file_name}" (expires in 120s):`, data.signedUrl);
+      console.log(`[DEBUG] Download URL for "${file.file_name}" (expires in 600s):`, data.signedUrl);
 
-      // Create a temporary link and click it
       const link = document.createElement('a');
       link.href = data.signedUrl;
       link.download = file.file_name;
@@ -214,19 +214,18 @@ const ProjectContent = () => {
     try {
       const { data, error } = await supabase.storage
         .from('project-files')
-        .createSignedUrl(file.file_path, 300); // 5 minutes for copy
+        .createSignedUrl(file.file_path, 86400); // 24 hours
 
       if (error) throw error;
       if (!data?.signedUrl) throw new Error('Failed to generate URL');
 
       await navigator.clipboard.writeText(data.signedUrl);
       
-      // Log for debugging (Deliverable C)
-      console.log(`[DEBUG] Copied signed URL for "${file.file_name}" (expires in 300s):`, data.signedUrl);
+      console.log(`[DEBUG] Copied signed URL for "${file.file_name}" (expires in 24h):`, data.signedUrl);
 
       toast({
-        title: "Link copied",
-        description: "Secure link copied (expires in 5 minutes).",
+        title: "Secure link copied",
+        description: "Anyone with this link can view the file for 24 hours.",
       });
     } catch (error: any) {
       console.error('Copy link error:', error);
@@ -417,21 +416,37 @@ const ProjectContent = () => {
                            </p>
                          </div>
                          <div className="flex items-center gap-1 flex-shrink-0">
-                           <Button
-                             size="sm"
-                             variant="ghost"
-                             onClick={() => handleOpenFile(file)}
-                             title="Open in new tab"
-                             className="text-slate-600 hover:text-slate-900"
-                           >
-                             <ExternalLink className="h-4 w-4" />
-                           </Button>
+                           {openFileUrls[file.id] ? (
+                             <a
+                               href={openFileUrls[file.id]}
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               className="inline-flex items-center justify-center h-8 w-8 rounded-md text-primary hover:bg-accent"
+                               title="Open in new tab"
+                               onClick={() => setOpenFileUrls(prev => {
+                                 const { [file.id]: _, ...rest } = prev;
+                                 return rest;
+                               })}
+                             >
+                               <ExternalLink className="h-4 w-4" />
+                             </a>
+                           ) : (
+                             <Button
+                               size="sm"
+                               variant="ghost"
+                               onClick={() => handleOpenFile(file)}
+                               title="Open in new tab"
+                               className="text-muted-foreground hover:text-foreground"
+                             >
+                               <ExternalLink className="h-4 w-4" />
+                             </Button>
+                           )}
                            <Button
                              size="sm"
                              variant="ghost"
                              onClick={() => handleDownloadFile(file)}
                              title="Download file"
-                             className="text-slate-600 hover:text-slate-900"
+                             className="text-muted-foreground hover:text-foreground"
                            >
                              <Download className="h-4 w-4" />
                            </Button>
@@ -439,8 +454,8 @@ const ProjectContent = () => {
                              size="sm"
                              variant="ghost"
                              onClick={() => handleCopyLink(file)}
-                             title="Copy secure link (expires in 5 min)"
-                             className="text-slate-600 hover:text-slate-900"
+                             title="Copy secure link (expires in 24 hours)"
+                             className="text-muted-foreground hover:text-foreground"
                            >
                              <Copy className="h-4 w-4" />
                            </Button>
