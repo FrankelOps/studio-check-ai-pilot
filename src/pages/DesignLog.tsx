@@ -16,6 +16,8 @@ import { OwnerPortal } from '@/components/OwnerPortal';
 import { NotificationBell } from '@/components/NotificationBell';
 import { ActionItemsManager } from '@/components/ActionItemsManager';
 import { MeetingMinutes } from '@/components/MeetingMinutes';
+import { AuthGuard } from '@/components/AuthGuard';
+import { UserMenu } from '@/components/UserMenu';
 
 interface Project {
   id: string;
@@ -39,7 +41,7 @@ interface DesignLogEntry {
   } | null;
 }
 
-const DesignLog = () => {
+const DesignLogContent = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [entries, setEntries] = useState<DesignLogEntry[]>([]);
@@ -223,6 +225,7 @@ const DesignLog = () => {
                 <FileText className="h-4 w-4 mr-2" />
                 Upload Document
               </Button>
+              <UserMenu />
             </div>
           </div>
         </div>
@@ -717,6 +720,14 @@ const DesignLog = () => {
         )}
       </main>
     </div>
+  );
+};
+
+const DesignLog = () => {
+  return (
+    <AuthGuard>
+      <DesignLogContent />
+    </AuthGuard>
   );
 };
 
