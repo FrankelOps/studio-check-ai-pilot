@@ -8,6 +8,7 @@ import { CreateProjectDialog } from '@/components/CreateProjectDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { AuthGuard } from '@/components/AuthGuard';
 import { UserMenu } from '@/components/UserMenu';
+import { useToast } from '@/hooks/use-toast';
 
 interface Project {
   id: string;
@@ -19,6 +20,19 @@ interface Project {
 const DashboardContent = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  // Show one-time success message after email confirmation
+  useEffect(() => {
+    const confirmed = sessionStorage.getItem('auth_email_confirmed');
+    if (confirmed === 'true') {
+      sessionStorage.removeItem('auth_email_confirmed');
+      toast({
+        title: "Email confirmed",
+        description: "You're now signed in. Welcome to StudioCheck!",
+      });
+    }
+  }, [toast]);
 
   const fetchProjects = async () => {
     try {
