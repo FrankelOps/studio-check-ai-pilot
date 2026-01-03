@@ -41,16 +41,16 @@ export const EvidenceItemSchema = z.object({
     y: z.number(),
     width: z.number(),
     height: z.number(),
-  }).optional(),
+  }).strict().optional(),
   table_row: z.object({
     sheet_id: z.string(),
     row_index: z.number(),
     column_values: z.record(z.string()),
-  }).optional(),
+  }).strict().optional(),
   snippet_text: z.string().min(1, 'snippet_text is required'),
   extraction_method: z.enum(['ocr', 'vision', 'text_layer', 'table_parser']),
   confidence: z.number().min(0).max(1),
-});
+}).strict();
 
 export type EvidenceItem = z.infer<typeof EvidenceItemSchema>;
 
@@ -65,8 +65,8 @@ export const LocationContextSchema = z.object({
     type: z.string(),
     id: z.string(),
     label: z.string().optional(),
-  })).optional(),
-});
+  }).strict()).optional(),
+}).strict();
 
 export type LocationContext = z.infer<typeof LocationContextSchema>;
 
@@ -78,7 +78,7 @@ export const RiskProfileSchema = z.object({
   severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   impact_type: z.string().min(1),
   rationale: z.string().min(1),
-});
+}).strict();
 
 export type RiskProfile = z.infer<typeof RiskProfileSchema>;
 
@@ -90,7 +90,7 @@ export const FindingSchema = z.object({
   title: z.string().min(1),
   summary: z.string().min(1),
   description: z.string().min(1),
-});
+}).strict();
 
 // ============================================================
 // RECOMMENDATION SCHEMA
@@ -99,7 +99,7 @@ export const FindingSchema = z.object({
 export const RecommendationSchema = z.object({
   action: z.string().min(1),
   responsible_party: z.string().optional(),
-});
+}).strict();
 
 // ============================================================
 // QUALITY SCHEMA
@@ -108,7 +108,7 @@ export const RecommendationSchema = z.object({
 export const QualitySchema = z.object({
   confidence_overall: z.number().min(0).max(1),
   suppression_notes: z.string().optional(),
-});
+}).strict();
 
 // ============================================================
 // TRACE SCHEMA
@@ -118,7 +118,7 @@ export const TraceSchema = z.object({
   model: z.string().min(1),
   prompt_hash: z.string().optional(),
   run_id: z.string().min(1),
-});
+}).strict();
 
 // ============================================================
 // PREFLIGHT RESULT SCHEMA
@@ -148,7 +148,7 @@ export type PreflightResult = z.infer<typeof PreflightResultSchema>;
 // ISSUE OBJECT V1 SCHEMA (FROZEN CONTRACT)
 // ============================================================
 
-export const IssueObjectSchemaV1 = z.object({
+const IssueObjectBaseSchema = z.object({
   issue_id: z.string().uuid(),
   pattern_id: z.string().min(1, 'pattern_id is required'),
   pattern_version: z.string().min(1, 'pattern_version is required'),
@@ -162,7 +162,43 @@ export const IssueObjectSchemaV1 = z.object({
   trace: TraceSchema,
   created_at: z.string().datetime(),
   updated_at: z.string().datetime().optional(),
-}).superRefine(noPageFieldsRefinement);
+}).strict();
+
+/**
+ * Helper to detect forbidden page keys anywhere in an object (deep recursive check)
+ */
+function containsForbiddenPageKeys(value: unknown): boolean {
+  if (value && typeof value === 'object') {
+    if (Array.isArray(value)) {
+      return value.some(item => containsForbiddenPageKeys(item));
+    }
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === 'page' || lowerKey === 'page_number' || lowerKey === 'pagenumber') {
+        return true;
+      }
+      if (containsForbiddenPageKeys(val)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export const IssueObjectSchemaV1 = z.preprocess(
+  (val) => {
+    // Check for forbidden page keys BEFORE Zod strips unknown fields
+    if (containsForbiddenPageKeys(val)) {
+      // Return a marker that will fail validation
+      return { __hasForbiddenPageKeys: true };
+    }
+    return val;
+  },
+  IssueObjectBaseSchema
+).refine(
+  (val) => !(val as Record<string, unknown>).__hasForbiddenPageKeys,
+  { message: 'Page/page_number fields are forbidden. Use sheet_id instead.' }
+);
 
 export type IssueObjectV1 = z.infer<typeof IssueObjectSchemaV1>;
 
