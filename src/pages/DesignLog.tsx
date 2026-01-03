@@ -18,6 +18,7 @@ import { ActionItemsManager } from '@/components/ActionItemsManager';
 import { MeetingMinutes } from '@/components/MeetingMinutes';
 import { AuthGuard } from '@/components/AuthGuard';
 import { UserMenu } from '@/components/UserMenu';
+import { isValidUUID } from '@/lib/validators';
 
 interface Project {
   id: string;
@@ -57,8 +58,14 @@ const DesignLogContent = () => {
   const [hasUploadedFiles, setHasUploadedFiles] = useState<boolean>(false);
   const { toast } = useToast();
 
+  // Early validation: if projectId is not a valid UUID, skip all queries
+  const isValidProjectId = isValidUUID(projectId);
+
   const fetchData = async () => {
-    if (!projectId) return;
+    if (!projectId || !isValidProjectId) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -119,11 +126,7 @@ const DesignLogContent = () => {
 
     } catch (error: any) {
       console.error('Error fetching design log data:', error);
-      toast({
-        variant: "destructive",
-        title: "Error loading design log",
-        description: error.message,
-      });
+      // Don't show toast for access/query errors - just show "not found" UI
     } finally {
       setLoading(false);
     }
