@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileText, AlertTriangle, Eye, Cpu, HelpCircle } from 'lucide-react';
+import { FileText, AlertTriangle, Eye, Cpu, HelpCircle, LayoutTemplate } from 'lucide-react';
 import type { SheetIndexRow, SheetKind, ExtractionSource } from '@/lib/analysis/types';
 
 interface SheetIndexTableProps {
@@ -109,6 +109,20 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
             </Tooltip>
           </TooltipProvider>
         );
+      case 'template_fields':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger className="flex items-center gap-1">
+                <LayoutTemplate className="h-3 w-3 text-green-500" />
+                <span className="text-xs text-green-500">Template</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Extracted via calibrated title block template</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
       default:
         return (
           <TooltipProvider>
@@ -131,6 +145,7 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
     ? sheets.reduce((sum, s) => sum + s.confidence, 0) / sheets.length
     : 0;
   const visionCount = sheets.filter(s => s.extraction_source === 'vision_titleblock').length;
+  const templateCount = sheets.filter(s => s.extraction_source === 'template_fields').length;
 
   return (
     <Card>
@@ -144,6 +159,11 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
             <CardDescription>
               {indexedCount} of {sheets.length} sheets identified • 
               {' '}Avg confidence: {Math.round(avgConfidence * 100)}%
+              {templateCount > 0 && (
+                <span className="ml-2 text-green-600">
+                  • {templateCount} via template
+                </span>
+              )}
               {visionCount > 0 && (
                 <span className="ml-2 text-purple-600">
                   • {visionCount} via vision

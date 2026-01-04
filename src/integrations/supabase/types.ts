@@ -349,6 +349,47 @@ export type Database = {
           },
         ]
       }
+      analysis_titleblock_templates: {
+        Row: {
+          calibration_samples: Json
+          confidence: number
+          created_at: string
+          discipline: string
+          id: string
+          job_id: string
+          project_id: string
+          template: Json
+        }
+        Insert: {
+          calibration_samples?: Json
+          confidence?: number
+          created_at?: string
+          discipline: string
+          id?: string
+          job_id: string
+          project_id: string
+          template?: Json
+        }
+        Update: {
+          calibration_samples?: Json
+          confidence?: number
+          created_at?: string
+          discipline?: string
+          id?: string
+          job_id?: string
+          project_id?: string
+          template?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_titleblock_templates_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       check_execution_logs: {
         Row: {
           analysis_id: string | null

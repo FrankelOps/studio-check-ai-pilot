@@ -41,6 +41,9 @@ Return ONLY valid JSON in this exact format: {"sheet_number": "...", "sheet_titl
 Rules:
 - Sheet numbers follow AEC patterns like: A101, A1.01, M-201, E001, FP101, S1-101
 - Sheet titles are descriptive names like: "FIRST FLOOR PLAN", "MECHANICAL SCHEDULE", "ELECTRICAL DETAILS"
+- IGNORE jurisdiction stamps like "SEATTLE DCI USE ONLY", "NOT FOR CONSTRUCTION", etc.
+- IGNORE general notes like "dimensions must be checked", "verify on site", etc.
+- The sheet title should describe the CONTENT of the drawing (plan, detail, schedule, etc.)
 - If you cannot find a value, use null
 - Do NOT include any other text or explanation, ONLY the JSON object`;
 
