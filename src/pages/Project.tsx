@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,7 +10,11 @@ import { FileUpload } from '@/components/FileUpload';
 import { AnalysisChat } from '@/components/AnalysisChat';
 import { AuthGuard } from '@/components/AuthGuard';
 import { UserMenu } from '@/components/UserMenu';
+import { DocumentReadiness } from '@/components/DocumentReadiness';
+import { SheetIndexTable } from '@/components/SheetIndexTable';
 import { isValidUUID } from '@/lib/validators';
+import { fetchPreflightReport, fetchSheetIndex } from '@/lib/analysis';
+import type { PreflightReport, SheetIndexRow } from '@/lib/analysis/types';
 
 interface Project {
   id: string;
@@ -36,13 +40,24 @@ interface AnalysisResult {
   };
 }
 
+interface AnalysisJob {
+  id: string;
+  file_id: string;
+  status: string;
+  total_pages: number;
+}
+
 const ProjectContent = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [analyses, setAnalyses] = useState<AnalysisResult[]>([]);
+  const [jobs, setJobs] = useState<AnalysisJob[]>([]);
   const [analyzing, setAnalyzing] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
+  const [sheetIndex, setSheetIndex] = useState<SheetIndexRow[]>([]);
+  const [stageZeroLoading, setStageZeroLoading] = useState(false);
   const { toast } = useToast();
 
   // Early validation: if projectId is not a valid UUID, skip all queries
@@ -94,6 +109,20 @@ const ProjectContent = () => {
       if (analysesError) throw analysesError;
       setAnalyses(analysesData || []);
 
+      // Fetch analysis jobs for Stage 0 data
+      const { data: jobsData } = await supabase
+        .from('analysis_jobs')
+        .select('id, file_id, status, total_pages')
+        .eq('project_id', projectId)
+        .order('started_at', { ascending: false });
+
+      if (jobsData && jobsData.length > 0) {
+        setJobs(jobsData);
+        // Fetch preflight and sheet index for the most recent job
+        const latestJob = jobsData[0];
+        await fetchStageZeroData(latestJob.id);
+      }
+
     } catch (error: any) {
       console.error('Error fetching project data:', error);
       // Don't show toast for access/query errors - just show "not found" UI
@@ -101,6 +130,22 @@ const ProjectContent = () => {
       setLoading(false);
     }
   };
+
+  const fetchStageZeroData = useCallback(async (jobId: string) => {
+    setStageZeroLoading(true);
+    try {
+      const [preflight, sheets] = await Promise.all([
+        fetchPreflightReport(jobId),
+        fetchSheetIndex(jobId),
+      ]);
+      setPreflightReport(preflight);
+      setSheetIndex(sheets);
+    } catch (error) {
+      console.error('Error fetching Stage 0 data:', error);
+    } finally {
+      setStageZeroLoading(false);
+    }
+  }, []);
 
   const handleAnalyze = async (fileId: string) => {
     setAnalyzing(fileId);
@@ -369,6 +414,14 @@ const ProjectContent = () => {
           </Card>
         </div>
 
+        {/* Stage 0: Document Readiness + Sheet Index */}
+        {(preflightReport || stageZeroLoading) && (
+          <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <DocumentReadiness report={preflightReport} loading={stageZeroLoading} />
+            <SheetIndexTable sheets={sheetIndex} loading={stageZeroLoading} />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* File Upload Section */}
           <div className="space-y-6">
@@ -382,7 +435,12 @@ const ProjectContent = () => {
               <CardContent>
                 <FileUpload 
                   projectId={projectId!} 
-                  onUploadComplete={() => fetchProjectData()}
+                  onUploadComplete={(fileId, jobId) => {
+                    fetchProjectData();
+                    if (jobId) {
+                      fetchStageZeroData(jobId);
+                    }
+                  }}
                 />
               </CardContent>
             </Card>

@@ -204,6 +204,50 @@ export type Database = {
           },
         ]
       }
+      analysis_preflight_reports: {
+        Row: {
+          created_at: string
+          created_by: string
+          flags: Json
+          id: string
+          job_id: string
+          metrics: Json
+          project_id: string
+          recommendations: Json
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          flags?: Json
+          id?: string
+          job_id: string
+          metrics?: Json
+          project_id: string
+          recommendations?: Json
+          status: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          flags?: Json
+          id?: string
+          job_id?: string
+          metrics?: Json
+          project_id?: string
+          recommendations?: Json
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_preflight_reports_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: true
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analysis_results: {
         Row: {
           analysis_data: Json
@@ -242,6 +286,59 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analysis_sheet_index_v2: {
+        Row: {
+          confidence: number
+          created_at: string
+          discipline: string | null
+          id: string
+          job_id: string
+          project_id: string
+          sheet_kind: string | null
+          sheet_number: string | null
+          sheet_render_asset_path: string | null
+          sheet_title: string | null
+          source_index: number
+          title_block_asset_path: string | null
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          discipline?: string | null
+          id?: string
+          job_id: string
+          project_id: string
+          sheet_kind?: string | null
+          sheet_number?: string | null
+          sheet_render_asset_path?: string | null
+          sheet_title?: string | null
+          source_index: number
+          title_block_asset_path?: string | null
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          discipline?: string | null
+          id?: string
+          job_id?: string
+          project_id?: string
+          sheet_kind?: string | null
+          sheet_number?: string | null
+          sheet_render_asset_path?: string | null
+          sheet_title?: string | null
+          source_index?: number
+          title_block_asset_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_sheet_index_v2_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
             referencedColumns: ["id"]
           },
         ]
