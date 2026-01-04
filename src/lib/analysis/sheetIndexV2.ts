@@ -33,8 +33,10 @@ async function getPdfJs(): Promise<PDFjsLib> {
   if (pdfjsLib) return pdfjsLib;
   
   const pdfjs = await import('pdfjs-dist');
-  const workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+  
+  // Use bundled worker (no external CDN dependency)
+  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   
   pdfjsLib = pdfjs as unknown as PDFjsLib;
   return pdfjsLib;
@@ -285,14 +287,8 @@ async function persistSheetIndex(
 ): Promise<void> {
   if (rows.length === 0) return;
   
-  // Delete existing rows for this job (idempotency)
-  await supabase
-    .from('analysis_sheet_index_v2' as any)
-    .delete()
-    .eq('job_id', jobId);
-  
-  // Insert new rows
-  const insertRows = rows.map(row => ({
+  // Upsert rows using (job_id, source_index) as conflict key - no client-side DELETE
+  const upsertRows = rows.map(row => ({
     project_id: projectId,
     job_id: jobId,
     source_index: row.source_index,
@@ -303,13 +299,18 @@ async function persistSheetIndex(
     confidence: row.confidence,
   }));
   
-  const { error } = await supabase
-    .from('analysis_sheet_index_v2' as any)
-    .insert(insertRows);
-  
-  if (error) {
-    console.error('Failed to persist sheet index:', error);
-    throw new Error('Failed to save sheet index');
+  // Batch upsert in chunks of 100 to avoid payload limits
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < upsertRows.length; i += CHUNK_SIZE) {
+    const chunk = upsertRows.slice(i, i + CHUNK_SIZE);
+    const { error } = await supabase
+      .from('analysis_sheet_index_v2' as any)
+      .upsert(chunk, { onConflict: 'job_id,source_index' });
+    
+    if (error) {
+      console.error('Failed to persist sheet index chunk:', error);
+      throw new Error('Failed to save sheet index');
+    }
   }
 }
 

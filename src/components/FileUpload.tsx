@@ -123,11 +123,11 @@ export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
               });
             }
 
-            // Update job status
+            // Update job status - use 'stage0_complete' for successful Stage 0
             await supabase
               .from('analysis_jobs')
               .update({ 
-                status: preflightReport.status === 'FAIL' ? 'preflight_failed' : 'indexed',
+                status: preflightReport.status === 'FAIL' ? 'preflight_failed' : 'stage0_complete',
                 total_pages: preflightReport.metrics.total_sheets,
               })
               .eq('id', jobData.id);
