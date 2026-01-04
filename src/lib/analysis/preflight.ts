@@ -36,9 +36,9 @@ async function getPdfJs(): Promise<PDFjsLib> {
   // Dynamic import for PDF.js
   const pdfjs = await import('pdfjs-dist');
   
-  // Set worker (use CDN for simplicity in browser)
-  const workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
-  pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+  // Use bundled worker (no external CDN dependency)
+  const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   
   pdfjsLib = pdfjs as unknown as PDFjsLib;
   return pdfjsLib;
@@ -161,11 +161,11 @@ function generateFlagsAndRecommendations(metrics: PreflightMetrics): {
   const flags: PreflightFlag[] = [];
   const recommendations: PreflightRecommendation[] = [];
   
-  // Text layer coverage
+  // Text layer coverage - warn but do NOT fail scanned PDFs
   if (metrics.text_layer_coverage_ratio < 0.5) {
     flags.push({
       code: 'NO_TEXT_LAYER_MAJORITY',
-      severity: 'error',
+      severity: 'warn', // Downgraded from 'error' to 'warn' - scanned PDFs should not hard-fail
       message: `Only ${Math.round(metrics.text_layer_coverage_ratio * 100)}% of sheets have text layers. Document may be scanned/rasterized.`,
     });
     recommendations.push({
@@ -228,19 +228,16 @@ function generateFlagsAndRecommendations(metrics: PreflightMetrics): {
  * Determine preflight status based on metrics and flags
  */
 function determineStatus(metrics: PreflightMetrics, flags: PreflightFlag[]): PreflightStatus {
-  // Fail conditions
+  // FAIL only for truly unreadable/encrypted/empty documents
   if (metrics.encrypted_or_error) return 'FAIL';
   if (metrics.total_sheets === 0) return 'FAIL';
-  if (flags.some(f => f.code === 'NO_TEXT_LAYER_MAJORITY' && f.severity === 'error')) return 'FAIL';
   
-  // Pass with limitations
-  if (flags.some(f => f.severity === 'warn' || f.severity === 'error')) {
-    return 'PASS_WITH_LIMITATIONS';
+  // Pass if text layer coverage is excellent and no warnings
+  if (metrics.text_layer_coverage_ratio >= 0.85 && !flags.some(f => f.severity === 'warn' || f.severity === 'error')) {
+    return 'PASS';
   }
   
-  // Pass if text layer coverage is good
-  if (metrics.text_layer_coverage_ratio >= 0.85) return 'PASS';
-  
+  // Everything else is PASS_WITH_LIMITATIONS (including scanned/raster PDFs)
   return 'PASS_WITH_LIMITATIONS';
 }
 
