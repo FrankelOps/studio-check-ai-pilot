@@ -6,8 +6,9 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, AlertTriangle } from 'lucide-react';
-import type { SheetIndexRow, SheetKind } from '@/lib/analysis/types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { FileText, AlertTriangle, Eye, Cpu, HelpCircle } from 'lucide-react';
+import type { SheetIndexRow, SheetKind, ExtractionSource } from '@/lib/analysis/types';
 
 interface SheetIndexTableProps {
   sheets: SheetIndexRow[];
@@ -78,10 +79,55 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
     return 'text-red-500';
   };
 
+  const getExtractionIcon = (source: ExtractionSource | undefined) => {
+    switch (source) {
+      case 'vector_text':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                <Cpu className="h-3 w-3 text-blue-500" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Extracted from vector text layer</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      case 'vision_titleblock':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                <Eye className="h-3 w-3 text-purple-500" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Extracted via AI vision (title block scan)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      default:
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                <HelpCircle className="h-3 w-3 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Extraction source unknown</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+    }
+  };
+
   const indexedCount = sheets.filter(s => s.sheet_number).length;
   const avgConfidence = sheets.length > 0
     ? sheets.reduce((sum, s) => sum + s.confidence, 0) / sheets.length
     : 0;
+  const visionCount = sheets.filter(s => s.extraction_source === 'vision_titleblock').length;
 
   return (
     <Card>
@@ -95,6 +141,11 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
             <CardDescription>
               {indexedCount} of {sheets.length} sheets identified • 
               {' '}Avg confidence: {Math.round(avgConfidence * 100)}%
+              {visionCount > 0 && (
+                <span className="ml-2 text-purple-600">
+                  • {visionCount} via vision
+                </span>
+              )}
             </CardDescription>
           </div>
           {indexedCount < sheets.length * 0.9 && (
@@ -116,6 +167,7 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
                   <TableHead className="w-28">Discipline</TableHead>
                   <TableHead className="w-24">Type</TableHead>
                   <TableHead className="w-20 text-right">Confidence</TableHead>
+                  <TableHead className="w-10 text-center">Src</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -127,7 +179,11 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
                       )}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate">
-                      {sheet.sheet_title || (
+                      {sheet.sheet_title && sheet.sheet_title.replace(/[^a-zA-Z]/g, '').length >= 4 ? (
+                        sheet.sheet_title
+                      ) : sheet.sheet_title ? (
+                        <span className="text-amber-500 italic">{sheet.sheet_title}</span>
+                      ) : (
                         <span className="text-muted-foreground italic">No title</span>
                       )}
                     </TableCell>
@@ -139,6 +195,9 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
                     <TableCell>{getKindBadge(sheet.sheet_kind)}</TableCell>
                     <TableCell className={`text-right font-medium ${getConfidenceColor(sheet.confidence)}`}>
                       {Math.round(sheet.confidence * 100)}%
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {getExtractionIcon(sheet.extraction_source)}
                     </TableCell>
                   </TableRow>
                 ))}
