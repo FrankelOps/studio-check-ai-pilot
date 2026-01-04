@@ -51,6 +51,11 @@ export interface PreflightReport {
 export type SheetKind = 'plan' | 'rcp' | 'schedule' | 'detail' | 'legend' | 'general' | 'unknown';
 
 /**
+ * Extraction source indicating how the sheet data was extracted
+ */
+export type ExtractionSource = 'vector_text' | 'vision_titleblock' | 'unknown';
+
+/**
  * Sheet index row representing a single sheet in the document
  * Note: source_index is 0-based internal ordering (NOT a "page number")
  */
@@ -61,6 +66,9 @@ export interface SheetIndexRow {
   discipline: string | null;
   sheet_kind: SheetKind;
   confidence: number;
+  extraction_source?: ExtractionSource;
+  sheet_render_asset_path?: string | null;
+  title_block_asset_path?: string | null;
 }
 
 /**

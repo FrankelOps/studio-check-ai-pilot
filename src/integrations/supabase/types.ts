@@ -295,6 +295,7 @@ export type Database = {
           confidence: number
           created_at: string
           discipline: string | null
+          extraction_source: string | null
           id: string
           job_id: string
           project_id: string
@@ -309,6 +310,7 @@ export type Database = {
           confidence?: number
           created_at?: string
           discipline?: string | null
+          extraction_source?: string | null
           id?: string
           job_id: string
           project_id: string
@@ -323,6 +325,7 @@ export type Database = {
           confidence?: number
           created_at?: string
           discipline?: string | null
+          extraction_source?: string | null
           id?: string
           job_id?: string
           project_id?: string

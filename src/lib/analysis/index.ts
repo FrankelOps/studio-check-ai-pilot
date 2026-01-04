@@ -12,6 +12,7 @@ export type {
   SheetIndexRow,
   PreflightReportRow,
   SheetIndexV2Row,
+  ExtractionSource,
 } from './types';
 
 export {
