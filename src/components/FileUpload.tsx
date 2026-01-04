@@ -6,10 +6,11 @@ import { Progress } from '@/components/ui/progress';
 import { ArrowDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { runPdfPreflightAndPersist, runSheetIndexV2AndPersist } from '@/lib/analysis';
 
 interface FileUploadProps {
   projectId: string;
-  onUploadComplete?: (fileId: string) => void;
+  onUploadComplete?: (fileId: string, jobId?: string) => void;
 }
 
 export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
@@ -78,14 +79,80 @@ export function FileUpload({ projectId, onUploadComplete }: FileUploadProps) {
 
       if (dbError) throw dbError;
 
-      setProgress(100); // Complete
+      setProgress(80);
+
+      // For PDF files, create an analysis job and run Stage 0 (preflight + sheet index)
+      let jobId: string | undefined;
+      if (file.type === 'application/pdf') {
+        // Create analysis job
+        const { data: jobData, error: jobError } = await supabase
+          .from('analysis_jobs')
+          .insert({
+            project_id: projectId,
+            file_id: fileData.id,
+            status: 'preflight',
+            total_pages: 0,
+            processed_pages: 0,
+            pass: 0,
+            params: {},
+          })
+          .select()
+          .single();
+
+        if (!jobError && jobData) {
+          jobId = jobData.id;
+          
+          setProgress(85);
+
+          // Run preflight
+          try {
+            const preflightReport = await runPdfPreflightAndPersist({
+              projectId,
+              jobId: jobData.id,
+              filePath,
+            });
+
+            setProgress(92);
+
+            // Run sheet index if preflight didn't fail completely
+            if (preflightReport.status !== 'FAIL') {
+              await runSheetIndexV2AndPersist({
+                projectId,
+                jobId: jobData.id,
+                filePath,
+              });
+            }
+
+            // Update job status
+            await supabase
+              .from('analysis_jobs')
+              .update({ 
+                status: preflightReport.status === 'FAIL' ? 'preflight_failed' : 'indexed',
+                total_pages: preflightReport.metrics.total_sheets,
+              })
+              .eq('id', jobData.id);
+
+          } catch (stageError) {
+            console.error('Stage 0 error:', stageError);
+            // Update job status to indicate error
+            await supabase
+              .from('analysis_jobs')
+              .update({ status: 'preflight_error', error: String(stageError) })
+              .eq('id', jobData.id);
+          }
+        }
+      }
+
+      setProgress(100);
 
       toast({
         title: "File uploaded successfully!",
-        description: `${file.name} is ready for analysis.`,
+        description: file.type === 'application/pdf' 
+          ? `${file.name} has been indexed and is ready for analysis.`
+          : `${file.name} is ready for analysis.`,
       });
 
-      onUploadComplete?.(fileData.id);
+      onUploadComplete?.(fileData.id, jobId);
 
     } catch (error: any) {
       console.error('Upload error:', error);
