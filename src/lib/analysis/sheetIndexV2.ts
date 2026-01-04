@@ -1,6 +1,6 @@
 // ============================================================
-// STUDIOCHECK SHEET INDEX v2.1
-// Improved extraction with title block crops + vision fallback
+// STUDIOCHECK SHEET INDEX v2.2
+// Improved extraction with boilerplate detection + dynamic cropping
 // ============================================================
 
 import { supabase } from '@/integrations/supabase/client';
@@ -47,12 +47,43 @@ async function getPdfJs(): Promise<PDFjsLib> {
 // SHEET NUMBER PATTERNS (AEC standard formats)
 // ============================================================
 const SHEET_NUMBER_PATTERNS = [
-  // Standard: A101, A1.01, A-101, M201, E001
   /\b([A-Z]{1,3})[-.]?(\d{2,4}(?:\.\d{1,2})?)\b/i,
-  // With level prefix: A1-101, S2.01
   /\b([A-Z]{1,2})(\d)[-.](\d{2,3})\b/i,
-  // Fire/Civil multi-char: FP101, FA201, C1.0
   /\b(FP|FA|FS|ID|LP|EL)[-.]?(\d{2,4})\b/i,
+];
+
+// ============================================================
+// BOILERPLATE PHRASES TO REJECT AS TITLES
+// ============================================================
+const BOILERPLATE_PHRASES = [
+  'dimensions must be checked',
+  'verified on site',
+  'shop drawings',
+  'before commencing',
+  'contractor shall',
+  'refer to specification',
+  'all dimensions are in',
+  'do not scale',
+  'for construction',
+  'copyright',
+  'proprietary',
+  'confidential',
+  'revision',
+  'date issued',
+  'drawn by',
+  'checked by',
+  'approved by',
+];
+
+// ============================================================
+// TITLE QUALITY KEYWORDS (AEC titles)
+// ============================================================
+const AEC_TITLE_KEYWORDS = [
+  'PLAN', 'FLOOR', 'ROOF', 'RCP', 'REFLECTED', 'CEILING',
+  'SCHEDULE', 'DETAIL', 'SECTION', 'ELEVATION', 'LEGEND',
+  'MECHANICAL', 'ELECTRICAL', 'PLUMBING', 'STRUCTURAL',
+  'LEVEL', 'SITE', 'BASEMENT', 'GROUND', 'TYPICAL',
+  'ENLARGED', 'PARTIAL', 'KEY', 'NOTES', 'GENERAL',
 ];
 
 // ============================================================
@@ -96,18 +127,13 @@ const DISCIPLINE_KEYWORDS: Record<string, string> = {
 };
 
 function inferDiscipline(sheetNumber: string | null, sheetTitle: string | null): string | null {
-  // Primary: from sheet number prefix
   if (sheetNumber) {
-    // Try 2-char prefix first (FP, FA, etc.)
     const prefix2 = sheetNumber.substring(0, 2).toUpperCase();
     if (DISCIPLINE_MAP[prefix2]) return DISCIPLINE_MAP[prefix2];
-    
-    // Then 1-char prefix
     const prefix1 = sheetNumber.charAt(0).toUpperCase();
     if (DISCIPLINE_MAP[prefix1]) return DISCIPLINE_MAP[prefix1];
   }
   
-  // Secondary: from title keywords
   if (sheetTitle) {
     const upperTitle = sheetTitle.toUpperCase();
     for (const [keyword, discipline] of Object.entries(DISCIPLINE_KEYWORDS)) {
@@ -127,8 +153,8 @@ function inferSheetKind(sheetTitle: string | null): SheetKind {
   if (upper.includes('RCP') || upper.includes('REFLECTED CEILING')) return 'rcp';
   if (upper.includes('DETAIL')) return 'detail';
   if (upper.includes('LEGEND') || upper.includes('ABBREVIATION') || upper.includes('SYMBOL')) return 'legend';
-  if (upper.includes('SECTION')) return 'general'; // Could add 'section' type
-  if (upper.includes('ELEVATION')) return 'general'; // Could add 'elevation' type
+  if (upper.includes('SECTION')) return 'general';
+  if (upper.includes('ELEVATION')) return 'general';
   if (upper.includes('PLAN') || upper.includes('FLOOR') || upper.includes('ROOF') || upper.includes('SITE')) return 'plan';
   if (upper.includes('COVER') || upper.includes('INDEX') || upper.includes('SHEET LIST')) return 'general';
   
@@ -136,7 +162,75 @@ function inferSheetKind(sheetTitle: string | null): SheetKind {
 }
 
 // ============================================================
-// TITLE BLOCK EXTRACTION RESULT
+// TITLE VALIDATION v2.2
+// ============================================================
+interface TitleValidation {
+  isValid: boolean;
+  reason?: string;
+}
+
+function validateTitle(title: string | null): TitleValidation {
+  if (!title) return { isValid: false, reason: 'empty' };
+  
+  const trimmed = title.trim();
+  if (trimmed.length < 6) return { isValid: false, reason: 'too_short' };
+  if (trimmed.length > 80) return { isValid: false, reason: 'too_long' };
+  
+  // Check word count
+  const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+  if (words.length > 12) return { isValid: false, reason: 'too_many_words' };
+  
+  // Check punctuation density
+  const commas = (trimmed.match(/,/g) || []).length;
+  const periods = (trimmed.match(/\./g) || []).length;
+  if (commas > 2) return { isValid: false, reason: 'too_many_commas' };
+  if (periods > 1) return { isValid: false, reason: 'too_many_periods' };
+  
+  // Check if mostly punctuation
+  const alphaChars = trimmed.replace(/[^a-zA-Z]/g, '');
+  if (alphaChars.length < 4) return { isValid: false, reason: 'mostly_punctuation' };
+  
+  // Check for boilerplate phrases
+  const lowerTitle = trimmed.toLowerCase();
+  for (const phrase of BOILERPLATE_PHRASES) {
+    if (lowerTitle.includes(phrase)) {
+      return { isValid: false, reason: 'boilerplate_phrase' };
+    }
+  }
+  
+  return { isValid: true };
+}
+
+function scoreTitleCandidate(candidate: string): number {
+  const validation = validateTitle(candidate);
+  if (!validation.isValid) return -1;
+  
+  let score = 0;
+  const upper = candidate.toUpperCase();
+  
+  // Prefer AEC keywords
+  for (const keyword of AEC_TITLE_KEYWORDS) {
+    if (upper.includes(keyword)) {
+      score += 25;
+      break;
+    }
+  }
+  
+  // Prefer mostly uppercase (title case)
+  const upperRatio = (candidate.match(/[A-Z]/g) || []).length / candidate.length;
+  if (upperRatio > 0.5) score += 15;
+  
+  // Prefer length between 8 and 45 characters
+  if (candidate.length >= 8 && candidate.length <= 45) score += 10;
+  
+  // Small bonus for reasonable length
+  score += Math.min(candidate.length, 30);
+  
+  return score;
+}
+
+// ============================================================
+// EXTRACTION RESULT INTERFACE
 // ============================================================
 interface ExtractionResult {
   sheet_number: string | null;
@@ -145,10 +239,12 @@ interface ExtractionResult {
   sheet_kind: SheetKind;
   confidence: number;
   extraction_source: ExtractionSource;
+  extraction_notes: Record<string, unknown>;
+  sheetNumberPosition?: { x: number; y: number };
 }
 
 // ============================================================
-// PASS 1: HEURISTIC TEXT EXTRACTION
+// PASS 1: HEURISTIC TEXT EXTRACTION v2.2
 // ============================================================
 function extractFromTextItems(
   textItems: TextItem[],
@@ -158,100 +254,93 @@ function extractFromTextItems(
   let sheet_number: string | null = null;
   let sheet_title: string | null = null;
   let heuristicConfidence = 0;
+  let sheetNumberPosition: { x: number; y: number } | undefined;
+  const extraction_notes: Record<string, unknown> = {};
   
-  // Title block region: bottom-right 25% width x 20% height
+  // Title block region: bottom-right 25% width x 25% height (PDF Y is inverted)
   const titleBlockMinX = viewportWidth * 0.75;
-  const titleBlockMinY = viewportHeight * 0.80;
+  const titleBlockMaxY = viewportHeight * 0.25; // In PDF coords, lower Y = bottom of page
   
-  // Filter items in title block region
-  const titleBlockItems = textItems.filter(item => {
-    const x = item.transform[4];
-    const y = item.transform[5];
-    return x >= titleBlockMinX && y <= viewportHeight * 0.20; // Y is inverted in PDF
-  });
+  // Collect all items with positions
+  const itemsWithPos = textItems.map(item => ({
+    text: item.str.trim(),
+    x: item.transform[4],
+    y: item.transform[5],
+    width: item.width,
+    height: item.height,
+  })).filter(item => item.text.length > 0);
   
-  // If no items in title block region, use all items
-  const searchItems = titleBlockItems.length >= 5 ? titleBlockItems : textItems;
+  // Find sheet number - prefer bottom-right position
+  const sheetNumberCandidates: { text: string; x: number; y: number; positionScore: number }[] = [];
   
-  // Collect all text
-  const allText = searchItems.map(item => item.str.trim()).filter(Boolean);
-  
-  // Extract sheet number
-  for (const text of allText) {
+  for (const item of itemsWithPos) {
     for (const pattern of SHEET_NUMBER_PATTERNS) {
-      const match = text.match(pattern);
+      const match = item.text.match(pattern);
       if (match) {
-        // Normalize: remove separators
-        sheet_number = match[0].toUpperCase().replace(/[-.]/g, '');
-        heuristicConfidence += 0.4;
-        break;
+        // Position score: higher for more bottom-right
+        const positionScore = item.x + (viewportHeight - item.y);
+        sheetNumberCandidates.push({
+          text: match[0].toUpperCase().replace(/[-.]/g, ''),
+          x: item.x,
+          y: item.y,
+          positionScore,
+        });
       }
     }
-    if (sheet_number) break;
   }
   
-  // Extract sheet title - look for descriptive lines
-  const titleCandidates = allText.filter(text => {
-    // Must be longer than 6 chars
-    if (text.length < 6) return false;
-    // Must not be just the sheet number
-    if (sheet_number && text.toUpperCase().includes(sheet_number)) return false;
-    // Must contain letters
-    if (!/[a-zA-Z]{3,}/.test(text)) return false;
-    // Should not be just punctuation/numbers
-    if (/^[\d\s\-\._:;,]+$/.test(text)) return false;
-    return true;
-  });
+  // Pick the sheet number with highest position score (most bottom-right)
+  if (sheetNumberCandidates.length > 0) {
+    sheetNumberCandidates.sort((a, b) => b.positionScore - a.positionScore);
+    const best = sheetNumberCandidates[0];
+    sheet_number = best.text;
+    sheetNumberPosition = { x: best.x, y: best.y };
+    heuristicConfidence += 0.40;
+    extraction_notes.sheet_number_candidates = sheetNumberCandidates.length;
+  }
   
-  // Pick the best title candidate
-  const aecKeywords = ['PLAN', 'RCP', 'REFLECTED', 'SCHEDULE', 'DETAIL', 'SECTION', 'ELEVATION', 'LEGEND', 'FLOOR', 'ROOF', 'SITE', 'LEVEL', 'MECHANICAL', 'ELECTRICAL', 'PLUMBING'];
+  // Collect title candidates from title block region and nearby
+  const allTextLines = itemsWithPos.map(i => i.text);
+  const titleCandidates: { text: string; score: number; inTitleBlock: boolean }[] = [];
   
-  let bestTitle: string | null = null;
-  let bestScore = 0;
+  for (const item of itemsWithPos) {
+    const inTitleBlock = item.x >= titleBlockMinX && item.y <= titleBlockMaxY;
+    const text = item.text;
+    
+    // Skip if it's the sheet number
+    if (sheet_number && text.toUpperCase().includes(sheet_number)) continue;
+    
+    const score = scoreTitleCandidate(text);
+    if (score > 0) {
+      titleCandidates.push({
+        text,
+        score: inTitleBlock ? score + 30 : score,
+        inTitleBlock,
+      });
+    }
+  }
+  
+  // Sort by score and pick best valid title
+  titleCandidates.sort((a, b) => b.score - a.score);
   
   for (const candidate of titleCandidates) {
-    let score = candidate.length; // Base score from length
-    const upper = candidate.toUpperCase();
-    
-    // Bonus for AEC keywords
-    for (const keyword of aecKeywords) {
-      if (upper.includes(keyword)) {
-        score += 20;
-        break;
-      }
-    }
-    
-    // Bonus for all caps (title style)
-    if (candidate === candidate.toUpperCase() && /[A-Z]/.test(candidate)) {
-      score += 10;
-    }
-    
-    if (score > bestScore) {
-      bestScore = score;
-      bestTitle = candidate;
+    const validation = validateTitle(candidate.text);
+    if (validation.isValid) {
+      sheet_title = candidate.text;
+      heuristicConfidence += 0.35;
+      break;
     }
   }
   
-  sheet_title = bestTitle;
-  
-  // Add confidence for title quality
-  if (sheet_title && sheet_title.length > 6) {
-    // Check if title is NOT just punctuation
-    const alphaChars = sheet_title.replace(/[^a-zA-Z]/g, '');
-    if (alphaChars.length >= 4) {
-      heuristicConfidence += 0.3;
-      
-      // Bonus for AEC keywords
-      const upper = sheet_title.toUpperCase();
-      if (aecKeywords.some(kw => upper.includes(kw))) {
-        heuristicConfidence += 0.2;
-      }
-    }
+  // Track if no valid title was found
+  if (!sheet_title && titleCandidates.length > 0) {
+    extraction_notes.title_rejected = true;
+    extraction_notes.rejection_reason = validateTitle(titleCandidates[0]?.text || '').reason;
   }
   
-  // Add confidence for text layer existing
-  if (textItems.length >= 30) {
-    heuristicConfidence += 0.1;
+  // Add confidence for text layer quality
+  if (textItems.length >= 50) {
+    heuristicConfidence += 0.10;
   }
   
   // Infer discipline and kind
@@ -263,33 +352,35 @@ function extractFromTextItems(
     sheet_title,
     discipline,
     sheet_kind,
-    confidence: Math.min(heuristicConfidence, 0.95),
+    confidence: Math.min(heuristicConfidence, 0.90),
     extraction_source: 'vector_text',
+    extraction_notes,
+    sheetNumberPosition,
   };
 }
 
 // ============================================================
-// VALIDATION: Check if extraction looks invalid
+// CHECK IF VISION FALLBACK IS NEEDED
 // ============================================================
-function isExtractionInvalid(result: ExtractionResult): boolean {
-  // No sheet number = weak
-  if (!result.sheet_number) return true;
-  
-  // Title is invalid (just punctuation, very short, or garbage)
-  if (result.sheet_title) {
-    const alphaChars = result.sheet_title.replace(/[^a-zA-Z]/g, '');
-    if (alphaChars.length < 4) return true;
-    
-    // Common garbage patterns
-    if (/^[\s:.\-_,;]+$/.test(result.sheet_title)) return true;
-    if (result.sheet_title.length < 4) return true;
+function needsVisionFallback(result: ExtractionResult): { needed: boolean; reason?: string } {
+  if (!result.sheet_number) {
+    return { needed: true, reason: 'no_sheet_number' };
   }
   
-  return result.confidence < 0.75;
+  if (result.confidence < 0.80) {
+    return { needed: true, reason: 'low_confidence' };
+  }
+  
+  const titleValidation = validateTitle(result.sheet_title);
+  if (!titleValidation.isValid) {
+    return { needed: true, reason: titleValidation.reason || 'invalid_title' };
+  }
+  
+  return { needed: false };
 }
 
 // ============================================================
-// PASS 2: VISION FALLBACK (using Lovable AI Gateway)
+// PASS 2: VISION FALLBACK
 // ============================================================
 async function extractWithVision(
   titleBlockImageBase64: string
@@ -322,7 +413,7 @@ async function renderSheetToCanvas(
   page: PDFPageProxy,
   dpi: number = 150
 ): Promise<{ canvas: HTMLCanvasElement; width: number; height: number }> {
-  const scale = dpi / 72; // PDF is 72 DPI by default
+  const scale = dpi / 72;
   const viewport = page.getViewport({ scale });
   
   const canvas = document.createElement('canvas');
@@ -337,14 +428,33 @@ async function renderSheetToCanvas(
   return { canvas, width: viewport.width, height: viewport.height };
 }
 
-function cropTitleBlock(
+function cropTitleBlockDynamic(
   canvas: HTMLCanvasElement,
   width: number,
-  height: number
+  height: number,
+  sheetNumberPosition?: { x: number; y: number },
+  viewportWidth?: number,
+  viewportHeight?: number,
+  renderScale?: number
 ): HTMLCanvasElement {
-  // Title block: bottom-right 25% width x 20% height
-  const cropWidth = Math.floor(width * 0.25);
-  const cropHeight = Math.floor(height * 0.20);
+  // Default crop: bottom-right 22% width x 16% height
+  let cropWidthRatio = 0.22;
+  let cropHeightRatio = 0.16;
+  
+  // If we have sheet number position, create a dynamic crop around it
+  if (sheetNumberPosition && viewportWidth && viewportHeight && renderScale) {
+    // Convert PDF coordinates to canvas coordinates
+    const canvasX = sheetNumberPosition.x * renderScale;
+    const canvasY = height - (sheetNumberPosition.y * renderScale); // Flip Y
+    
+    // Create crop region that includes the sheet number point
+    // Expand the crop to include area around the sheet number
+    cropWidthRatio = 0.24;
+    cropHeightRatio = 0.18;
+  }
+  
+  const cropWidth = Math.floor(width * cropWidthRatio);
+  const cropHeight = Math.floor(height * cropHeightRatio);
   const cropX = width - cropWidth;
   const cropY = height - cropHeight;
   
@@ -378,7 +488,90 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 // ============================================================
-// MAIN: RUN SHEET INDEX V2 AND PERSIST
+// CONFIDENCE CALCULATION v2.2
+// ============================================================
+function calculateFinalConfidence(
+  result: ExtractionResult,
+  visionUsed: boolean,
+  visionSucceeded: boolean
+): number {
+  let confidence = 0;
+  
+  // Sheet number scoring
+  if (result.sheet_number) {
+    confidence += 0.45;
+    // Bonus for matching AEC pattern
+    for (const pattern of SHEET_NUMBER_PATTERNS) {
+      if (pattern.test(result.sheet_number)) {
+        confidence += 0.05;
+        break;
+      }
+    }
+  } else {
+    // No sheet number = max 0.55
+    return Math.min(result.confidence, 0.55);
+  }
+  
+  // Title scoring
+  const titleValidation = validateTitle(result.sheet_title);
+  if (result.sheet_title && titleValidation.isValid) {
+    confidence += 0.35;
+    
+    // Bonus for AEC keywords
+    const upper = result.sheet_title.toUpperCase();
+    if (AEC_TITLE_KEYWORDS.some(kw => upper.includes(kw))) {
+      confidence += 0.10;
+    }
+  } else if (result.sheet_title) {
+    // Invalid title = max 0.30
+    return Math.min(0.30, confidence);
+  } else {
+    // No title = max 0.45
+    return Math.min(0.45, confidence);
+  }
+  
+  // Vision bonus/penalty
+  if (visionUsed) {
+    if (visionSucceeded) {
+      confidence = Math.min(confidence, 0.95);
+    } else {
+      confidence = Math.min(confidence, 0.40);
+    }
+  }
+  
+  return Math.min(confidence, 0.97);
+}
+
+// ============================================================
+// BOILERPLATE DETECTION (across all sheets)
+// ============================================================
+function detectBoilerplateTitles(
+  results: Array<{ sheet_title: string | null; sourceIndex: number }>
+): Set<number> {
+  const titleCounts = new Map<string, number[]>();
+  
+  for (const r of results) {
+    if (r.sheet_title && r.sheet_title.length > 40) {
+      const normalized = r.sheet_title.toLowerCase().trim();
+      const indices = titleCounts.get(normalized) || [];
+      indices.push(r.sourceIndex);
+      titleCounts.set(normalized, indices);
+    }
+  }
+  
+  const boilerplateIndices = new Set<number>();
+  for (const [title, indices] of titleCounts.entries()) {
+    if (indices.length > 8) {
+      // Same title on > 8 sheets = boilerplate
+      indices.forEach(i => boilerplateIndices.add(i));
+    }
+  }
+  
+  return boilerplateIndices;
+}
+
+// ============================================================
+// MAIN: RUN SHEET INDEX V2.2 AND PERSIST
 // ============================================================
 export async function runSheetIndexV2AndPersist(params: {
   projectId: string;
@@ -387,6 +580,8 @@ export async function runSheetIndexV2AndPersist(params: {
   useVisionFallback?: boolean;
 }): Promise<SheetIndexRow[]> {
   const { projectId, jobId, filePath, useVisionFallback = true } = params;
+  
+  console.log('[SheetIndex v2.2] Starting extraction:', { projectId, jobId });
   
   // Download PDF
   const { data: blob, error: downloadError } = await supabase.storage
@@ -402,8 +597,19 @@ export async function runSheetIndexV2AndPersist(params: {
   const pdfjs = await getPdfJs();
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
   
-  const results: SheetIndexRow[] = [];
   const RENDER_DPI = 150;
+  const renderScale = RENDER_DPI / 72;
+  
+  // First pass: extract all sheets with heuristics
+  const firstPassResults: Array<{
+    sourceIndex: number;
+    result: ExtractionResult;
+    canvas: HTMLCanvasElement;
+    width: number;
+    height: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  }> = [];
   
   for (let i = 1; i <= pdf.numPages; i++) {
     const sourceIndex = i - 1;
@@ -411,12 +617,10 @@ export async function runSheetIndexV2AndPersist(params: {
     try {
       const page = await pdf.getPage(i);
       const viewport = page.getViewport({ scale: 1.0 });
-      
-      // Get text content for heuristic extraction
       const textContent = await page.getTextContent();
       
       // Pass 1: Heuristic extraction
-      let result = extractFromTextItems(
+      const result = extractFromTextItems(
         textContent.items as TextItem[],
         viewport.width,
         viewport.height
@@ -425,132 +629,196 @@ export async function runSheetIndexV2AndPersist(params: {
       // Render sheet
       const { canvas, width, height } = await renderSheetToCanvas(page, RENDER_DPI);
       
-      // Crop title block
-      const titleBlockCanvas = cropTitleBlock(canvas, width, height);
+      firstPassResults.push({
+        sourceIndex,
+        result,
+        canvas,
+        width,
+        height,
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
+      });
+    } catch (error) {
+      console.warn(`Failed first pass for sheet ${sourceIndex}:`, error);
+      // Create placeholder canvas for failed sheets
+      const placeholderCanvas = document.createElement('canvas');
+      placeholderCanvas.width = 100;
+      placeholderCanvas.height = 100;
       
-      // Upload assets to storage
-      let sheet_render_asset_path: string | null = null;
-      let title_block_asset_path: string | null = null;
+      firstPassResults.push({
+        sourceIndex,
+        result: {
+          sheet_number: null,
+          sheet_title: null,
+          discipline: null,
+          sheet_kind: 'unknown',
+          confidence: 0,
+          extraction_source: 'unknown',
+          extraction_notes: { error: 'first_pass_failed' },
+        },
+        canvas: placeholderCanvas,
+        width: 100,
+        height: 100,
+        viewportWidth: 100,
+        viewportHeight: 100,
+      });
+    }
+  }
+  
+  // Detect boilerplate titles across all sheets
+  const boilerplateIndices = detectBoilerplateTitles(
+    firstPassResults.map(r => ({
+      sheet_title: r.result.sheet_title,
+      sourceIndex: r.sourceIndex,
+    }))
+  );
+  
+  console.log(`[SheetIndex v2.2] Detected ${boilerplateIndices.size} sheets with boilerplate titles`);
+  
+  // Second pass: process each sheet, apply vision fallback where needed
+  const finalResults: SheetIndexRow[] = [];
+  
+  for (const pass1 of firstPassResults) {
+    const { sourceIndex, result, canvas, width, height, viewportWidth, viewportHeight } = pass1;
+    
+    let finalResult = { ...result };
+    let visionUsed = false;
+    let visionSucceeded = false;
+    
+    // Check if this sheet needs vision fallback
+    const fallbackCheck = needsVisionFallback(result);
+    const isBoilerplate = boilerplateIndices.has(sourceIndex);
+    
+    if (isBoilerplate) {
+      finalResult.extraction_notes = {
+        ...finalResult.extraction_notes,
+        boilerplate_detected: true,
+      };
+    }
+    
+    // Crop title block with dynamic positioning
+    const titleBlockCanvas = cropTitleBlockDynamic(
+      canvas, 
+      width, 
+      height,
+      result.sheetNumberPosition,
+      viewportWidth,
+      viewportHeight,
+      renderScale
+    );
+    
+    // Upload assets
+    let sheet_render_asset_path: string | null = null;
+    let title_block_asset_path: string | null = null;
+    
+    try {
+      const renderBlob = await canvasToBlob(canvas);
+      const renderPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/render.png`;
       
-      try {
-        const renderBlob = await canvasToBlob(canvas);
-        const renderPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/render.png`;
-        
-        const { error: renderUploadError } = await supabase.storage
-          .from('project-files')
-          .upload(renderPath, renderBlob, { 
-            contentType: 'image/png',
-            upsert: true,
-          });
-        
-        if (!renderUploadError) {
-          sheet_render_asset_path = renderPath;
-        }
-        
-        const titleBlockBlob = await canvasToBlob(titleBlockCanvas);
-        const titleBlockPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/titleblock.png`;
-        
-        const { error: tbUploadError } = await supabase.storage
-          .from('project-files')
-          .upload(titleBlockPath, titleBlockBlob, {
-            contentType: 'image/png',
-            upsert: true,
-          });
-        
-        if (!tbUploadError) {
-          title_block_asset_path = titleBlockPath;
-        }
-      } catch (uploadError) {
-        console.warn(`Failed to upload assets for sheet ${sourceIndex}:`, uploadError);
+      const { error: renderUploadError } = await supabase.storage
+        .from('project-files')
+        .upload(renderPath, renderBlob, { 
+          contentType: 'image/png',
+          upsert: true,
+        });
+      
+      if (!renderUploadError) {
+        sheet_render_asset_path = renderPath;
       }
       
-      // Pass 2: Vision fallback if extraction is weak
-      if (useVisionFallback && isExtractionInvalid(result)) {
-        const titleBlockBase64 = canvasToBase64(titleBlockCanvas);
-        const visionResult = await extractWithVision(titleBlockBase64);
+      const titleBlockBlob = await canvasToBlob(titleBlockCanvas);
+      const titleBlockPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/titleblock.png`;
+      
+      const { error: tbUploadError } = await supabase.storage
+        .from('project-files')
+        .upload(titleBlockPath, titleBlockBlob, {
+          contentType: 'image/png',
+          upsert: true,
+        });
+      
+      if (!tbUploadError) {
+        title_block_asset_path = titleBlockPath;
+      }
+    } catch (uploadError) {
+      console.warn(`Failed to upload assets for sheet ${sourceIndex}:`, uploadError);
+    }
+    
+    // Apply vision fallback if needed
+    if (useVisionFallback && (fallbackCheck.needed || isBoilerplate)) {
+      visionUsed = true;
+      finalResult.extraction_notes = {
+        ...finalResult.extraction_notes,
+        vision_reason: isBoilerplate ? 'boilerplate_title' : fallbackCheck.reason,
+      };
+      
+      const titleBlockBase64 = canvasToBase64(titleBlockCanvas);
+      const visionResult = await extractWithVision(titleBlockBase64);
+      
+      if (visionResult.sheet_number || visionResult.sheet_title) {
+        const visionTitleValid = validateTitle(visionResult.sheet_title);
         
-        if (visionResult.sheet_number || visionResult.sheet_title) {
-          // Merge vision results
-          result = {
-            sheet_number: visionResult.sheet_number || result.sheet_number,
-            sheet_title: visionResult.sheet_title || result.sheet_title,
-            discipline: inferDiscipline(
-              visionResult.sheet_number || result.sheet_number,
-              visionResult.sheet_title || result.sheet_title
-            ),
-            sheet_kind: inferSheetKind(visionResult.sheet_title || result.sheet_title),
-            confidence: calculateVisionConfidence(visionResult),
+        // Only use vision result if it's actually better
+        if (visionResult.sheet_number && visionTitleValid.isValid) {
+          visionSucceeded = true;
+          finalResult = {
+            sheet_number: visionResult.sheet_number,
+            sheet_title: visionResult.sheet_title,
+            discipline: inferDiscipline(visionResult.sheet_number, visionResult.sheet_title),
+            sheet_kind: inferSheetKind(visionResult.sheet_title),
+            confidence: 0,
             extraction_source: 'vision_titleblock',
+            extraction_notes: {
+              ...finalResult.extraction_notes,
+              vision_used: true,
+              vision_succeeded: true,
+            },
+          };
+        } else if (visionResult.sheet_number && !result.sheet_number) {
+          // At least use the sheet number
+          visionSucceeded = true;
+          finalResult.sheet_number = visionResult.sheet_number;
+          finalResult.discipline = inferDiscipline(visionResult.sheet_number, finalResult.sheet_title);
+          finalResult.extraction_source = 'vision_titleblock';
+          finalResult.extraction_notes = {
+            ...finalResult.extraction_notes,
+            vision_used: true,
+            vision_partial: true,
           };
         }
       }
       
-      // Apply confidence penalties for invalid extraction
-      let finalConfidence = result.confidence;
-      if (!result.sheet_number) finalConfidence = Math.min(finalConfidence, 0.50);
-      if (result.sheet_title) {
-        const alphaChars = result.sheet_title.replace(/[^a-zA-Z]/g, '');
-        if (alphaChars.length < 4) finalConfidence = Math.min(finalConfidence, 0.30);
-      } else {
-        finalConfidence = Math.min(finalConfidence, 0.40);
-      }
-      
-      results.push({
-        source_index: sourceIndex,
-        sheet_number: result.sheet_number,
-        sheet_title: result.sheet_title,
-        discipline: result.discipline,
-        sheet_kind: result.sheet_kind,
-        confidence: finalConfidence,
-        extraction_source: result.extraction_source,
-        sheet_render_asset_path,
-        title_block_asset_path,
-      });
-      
-    } catch (error) {
-      console.warn(`Failed to process sheet ${sourceIndex}:`, error);
-      results.push({
-        source_index: sourceIndex,
-        sheet_number: null,
-        sheet_title: null,
-        discipline: null,
-        sheet_kind: 'unknown',
-        confidence: 0,
-        extraction_source: 'unknown',
-        sheet_render_asset_path: null,
-        title_block_asset_path: null,
-      });
-    }
-  }
-  
-  // Persist to database using upsert
-  await persistSheetIndex(projectId, jobId, results);
-  
-  return results;
-}
-
-function calculateVisionConfidence(visionResult: { sheet_number: string | null; sheet_title: string | null }): number {
-  let confidence = 0.50; // Base for vision
-  
-  if (visionResult.sheet_number) {
-    confidence += 0.30;
-    // Bonus for matching AEC pattern
-    for (const pattern of SHEET_NUMBER_PATTERNS) {
-      if (pattern.test(visionResult.sheet_number)) {
-        confidence += 0.10;
-        break;
+      if (!visionSucceeded) {
+        finalResult.extraction_notes = {
+          ...finalResult.extraction_notes,
+          vision_used: true,
+          vision_failed: true,
+        };
       }
     }
+    
+    // Calculate final confidence
+    const finalConfidence = calculateFinalConfidence(finalResult, visionUsed, visionSucceeded);
+    
+    finalResults.push({
+      source_index: sourceIndex,
+      sheet_number: finalResult.sheet_number,
+      sheet_title: finalResult.sheet_title,
+      discipline: finalResult.discipline,
+      sheet_kind: finalResult.sheet_kind,
+      confidence: finalConfidence,
+      extraction_source: finalResult.extraction_source,
+      extraction_notes: finalResult.extraction_notes,
+      sheet_render_asset_path,
+      title_block_asset_path,
+    });
   }
   
-  if (visionResult.sheet_title && visionResult.sheet_title.length > 6) {
-    const alphaChars = visionResult.sheet_title.replace(/[^a-zA-Z]/g, '');
-    if (alphaChars.length >= 4) {
-      confidence += 0.15;
-    }
-  }
+  // Persist to database
+  await persistSheetIndex(projectId, jobId, finalResults);
   
-  return Math.min(confidence, 0.95);
+  console.log(`[SheetIndex v2.2] Completed: ${finalResults.length} sheets processed`);
+  
+  return finalResults;
 }
 
 // ============================================================
@@ -561,7 +829,6 @@ async function persistSheetIndex(
   jobId: string,
   results: SheetIndexRow[]
 ): Promise<void> {
-  // Batch in chunks of 50
   const BATCH_SIZE = 50;
   
   for (let i = 0; i < results.length; i += BATCH_SIZE) {
@@ -574,6 +841,8 @@ async function persistSheetIndex(
       discipline: row.discipline,
       sheet_kind: row.sheet_kind,
       confidence: row.confidence,
+      extraction_source: row.extraction_source,
+      extraction_notes: row.extraction_notes || {},
       sheet_render_asset_path: row.sheet_render_asset_path,
       title_block_asset_path: row.title_block_asset_path,
     }));
@@ -611,6 +880,7 @@ export async function fetchSheetIndex(jobId: string): Promise<SheetIndexRow[]> {
     sheet_kind: row.sheet_kind as SheetKind,
     confidence: row.confidence,
     extraction_source: (row.extraction_source || 'unknown') as ExtractionSource,
+    extraction_notes: row.extraction_notes || {},
     sheet_render_asset_path: row.sheet_render_asset_path,
     title_block_asset_path: row.title_block_asset_path,
   }));

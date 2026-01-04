@@ -66,7 +66,8 @@ export interface SheetIndexRow {
   discipline: string | null;
   sheet_kind: SheetKind;
   confidence: number;
-  extraction_source?: ExtractionSource;
+  extraction_source: ExtractionSource;
+  extraction_notes?: Record<string, unknown>;
   sheet_render_asset_path?: string | null;
   title_block_asset_path?: string | null;
 }
