@@ -53,7 +53,34 @@ export type SheetKind = 'plan' | 'rcp' | 'schedule' | 'detail' | 'legend' | 'gen
 /**
  * Extraction source indicating how the sheet data was extracted
  */
-export type ExtractionSource = 'vector_text' | 'vision_titleblock' | 'unknown';
+export type ExtractionSource = 'vector_text' | 'vision_titleblock' | 'template_fields' | 'unknown';
+
+/**
+ * Bounding box in normalized coordinates (0-1)
+ */
+export interface NormalizedBBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Title block template for a discipline
+ */
+export interface TitleBlockTemplate {
+  id?: string;
+  project_id: string;
+  job_id: string;
+  discipline: string;
+  template: {
+    bbox_sheet_title_value?: NormalizedBBox | null;
+    bbox_sheet_number_value?: NormalizedBBox | null;
+  };
+  calibration_samples: Array<{ source_index: number; sheet_number: string }>;
+  confidence: number;
+  created_at?: string;
+}
 
 /**
  * Sheet index row representing a single sheet in the document
