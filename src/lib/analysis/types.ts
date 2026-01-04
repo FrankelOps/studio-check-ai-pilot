@@ -97,6 +97,10 @@ export interface SheetIndexRow {
   extraction_notes?: Record<string, unknown>;
   sheet_render_asset_path?: string | null;
   title_block_asset_path?: string | null;
+  // Crop evidence fields (v2.4)
+  crop_asset_path?: string | null;
+  crop_valid?: boolean;
+  crop_reason?: string;
 }
 
 /**

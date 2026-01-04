@@ -294,6 +294,9 @@ export type Database = {
         Row: {
           confidence: number
           created_at: string
+          crop_asset_path: string | null
+          crop_reason: string | null
+          crop_valid: boolean | null
           discipline: string | null
           extraction_notes: Json
           extraction_source: string | null
@@ -310,6 +313,9 @@ export type Database = {
         Insert: {
           confidence?: number
           created_at?: string
+          crop_asset_path?: string | null
+          crop_reason?: string | null
+          crop_valid?: boolean | null
           discipline?: string | null
           extraction_notes?: Json
           extraction_source?: string | null
@@ -326,6 +332,9 @@ export type Database = {
         Update: {
           confidence?: number
           created_at?: string
+          crop_asset_path?: string | null
+          crop_reason?: string | null
+          crop_valid?: boolean | null
           discipline?: string | null
           extraction_notes?: Json
           extraction_source?: string | null

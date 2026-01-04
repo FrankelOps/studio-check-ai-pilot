@@ -3,12 +3,15 @@
 // Displays sheet metadata extracted from PDF
 // ============================================================
 
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { FileText, AlertTriangle, Eye, Cpu, HelpCircle, LayoutTemplate } from 'lucide-react';
+import { FileText, AlertTriangle, Eye, Cpu, HelpCircle, LayoutTemplate, Bug } from 'lucide-react';
 import type { SheetIndexRow, SheetKind, ExtractionSource } from '@/lib/analysis/types';
+import { SheetDebugModal } from './SheetDebugModal';
 
 interface SheetIndexTableProps {
   sheets: SheetIndexRow[];
@@ -16,6 +19,8 @@ interface SheetIndexTableProps {
 }
 
 export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
+  const [debugSheet, setDebugSheet] = useState<SheetIndexRow | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
   if (loading) {
     return (
       <Card>
@@ -185,17 +190,22 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
             <Table>
               <TableHeader className="sticky top-0 bg-slate-50">
                 <TableRow>
+                  <TableHead className="w-10">#</TableHead>
                   <TableHead className="w-24">Sheet #</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead className="w-28">Discipline</TableHead>
                   <TableHead className="w-24">Type</TableHead>
                   <TableHead className="w-20 text-right">Confidence</TableHead>
                   <TableHead className="w-10 text-center">Src</TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sheets.map((sheet) => (
                   <TableRow key={sheet.source_index} className={!sheet.sheet_number ? 'bg-red-50/30' : ''}>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {sheet.source_index}
+                    </TableCell>
                     <TableCell className="font-mono font-medium">
                       {sheet.sheet_number || (
                         <span className="text-red-400 italic">Unknown</span>
@@ -222,12 +232,31 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
                     <TableCell className="text-center">
                       {getExtractionSourceDisplay(sheet.extraction_source)}
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => {
+                          setDebugSheet(sheet);
+                          setDebugOpen(true);
+                        }}
+                      >
+                        <Bug className="h-3 w-3 text-muted-foreground" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
         </div>
+
+        <SheetDebugModal
+          sheet={debugSheet}
+          open={debugOpen}
+          onOpenChange={setDebugOpen}
+        />
       </CardContent>
     </Card>
   );
