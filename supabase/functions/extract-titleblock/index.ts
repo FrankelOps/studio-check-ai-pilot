@@ -16,7 +16,21 @@ serve(async (req) => {
   }
 
   try {
-    const { image } = await req.json();
+    const { image, meta } = await req.json();
+    
+    // Log metadata for debugging
+    if (meta) {
+      console.log("[extract-titleblock] Request meta:", JSON.stringify({
+        jobId: meta.jobId || "unknown",
+        projectId: meta.projectId || "unknown",
+        sourceIndex: meta.sourceIndex ?? "unknown",
+        expectedDiscipline: meta.expectedDiscipline || "unknown",
+        phase: meta.phase || "unknown",
+        imageSize: image ? `${Math.round(image.length / 1024)}KB` : "no image"
+      }));
+    } else {
+      console.log("[extract-titleblock] Request without meta, imageSize:", image ? `${Math.round(image.length / 1024)}KB` : "no image");
+    }
     
     if (!image) {
       return new Response(

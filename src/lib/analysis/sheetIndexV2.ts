@@ -1,6 +1,7 @@
 // ============================================================
-// STUDIOCHECK SHEET INDEX v2.3
+// STUDIOCHECK SHEET INDEX v2.4
 // Template Calibration + Field-Anchored Extraction
+// + Crop Evidence + Sheet Number v1 + Crop Validity Guard
 // ============================================================
 
 import { supabase } from '@/integrations/supabase/client';
@@ -272,6 +273,17 @@ interface ExtractionResult {
 }
 
 // ============================================================
+// METADATA FOR EDGE FUNCTION CALLS
+// ============================================================
+interface ExtractionMeta {
+  jobId: string;
+  projectId: string;
+  sourceIndex: number;
+  expectedDiscipline: string;
+  phase: string;
+}
+
+// ============================================================
 // PASS 1: HEURISTIC TEXT EXTRACTION v2.3
 // ============================================================
 function extractFromTextItems(
@@ -416,14 +428,24 @@ function needsVisionFallback(result: ExtractionResult): { needed: boolean; reaso
 }
 
 // ============================================================
-// VISION EXTRACTION (via edge function)
+// VISION EXTRACTION (via edge function) WITH METADATA
 // ============================================================
 async function extractWithVision(
-  titleBlockImageBase64: string
+  titleBlockImageBase64: string,
+  meta: ExtractionMeta
 ): Promise<{ sheet_number: string | null; sheet_title: string | null }> {
   try {
     const response = await supabase.functions.invoke('extract-titleblock', {
-      body: { image: titleBlockImageBase64 },
+      body: { 
+        image: titleBlockImageBase64,
+        meta: {
+          jobId: meta.jobId,
+          projectId: meta.projectId,
+          sourceIndex: meta.sourceIndex,
+          expectedDiscipline: meta.expectedDiscipline,
+          phase: meta.phase,
+        }
+      },
     });
     
     if (response.error) {
@@ -439,6 +461,136 @@ async function extractWithVision(
   } catch (error) {
     console.error('Vision extraction failed:', error);
     return { sheet_number: null, sheet_title: null };
+  }
+}
+
+// ============================================================
+// SHEET NUMBER V1: DETERMINISTIC EXTRACTION (vector + vision fallback)
+// ============================================================
+async function extractSheetNumberV1(
+  textItems: TextItem[],
+  viewportWidth: number,
+  viewportHeight: number,
+  canvas: HTMLCanvasElement,
+  meta: ExtractionMeta
+): Promise<{ sheet_number: string | null; confidence: number; position?: { x: number; y: number }; method: 'vector' | 'vision' }> {
+  // Step 1: Try vector extraction first (regex scan)
+  const itemsWithPos = textItems.map(item => ({
+    text: item.str.trim(),
+    x: item.transform[4],
+    y: item.transform[5],
+  })).filter(item => item.text.length > 0);
+  
+  const sheetNumberCandidates: { text: string; x: number; y: number; positionScore: number }[] = [];
+  
+  for (const item of itemsWithPos) {
+    for (const pattern of SHEET_NUMBER_PATTERNS) {
+      const match = item.text.match(pattern);
+      if (match) {
+        const positionScore = item.x + (viewportHeight - item.y);
+        sheetNumberCandidates.push({
+          text: match[0].toUpperCase().replace(/[-.]/g, ''),
+          x: item.x,
+          y: item.y,
+          positionScore,
+        });
+      }
+    }
+  }
+  
+  // Pick the sheet number with highest position score (most bottom-right)
+  if (sheetNumberCandidates.length > 0) {
+    sheetNumberCandidates.sort((a, b) => b.positionScore - a.positionScore);
+    const best = sheetNumberCandidates[0];
+    
+    // Validate pattern
+    const isValid = SHEET_NUMBER_PATTERNS.some(p => p.test(best.text));
+    if (isValid) {
+      return {
+        sheet_number: best.text,
+        confidence: 0.85,
+        position: { x: best.x, y: best.y },
+        method: 'vector',
+      };
+    }
+  }
+  
+  // Step 2: Vision fallback - generous bottom-right crop for sheet number only
+  const cropWidthRatio = 0.30;
+  const cropHeightRatio = 0.25;
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  const cropWidth = Math.floor(width * cropWidthRatio);
+  const cropHeight = Math.floor(height * cropHeightRatio);
+  const cropX = width - cropWidth;
+  const cropY = height - cropHeight;
+  
+  const cropCanvas = document.createElement('canvas');
+  cropCanvas.width = cropWidth;
+  cropCanvas.height = cropHeight;
+  
+  const ctx = cropCanvas.getContext('2d');
+  if (!ctx) {
+    return { sheet_number: null, confidence: 0, method: 'vector' };
+  }
+  
+  ctx.drawImage(canvas, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+  const cropBase64 = canvasToBase64(cropCanvas);
+  
+  const visionResult = await extractWithVision(cropBase64, {
+    ...meta,
+    phase: 'sheet_number_v1',
+  });
+  
+  if (visionResult.sheet_number) {
+    // Validate pattern
+    const isValid = SHEET_NUMBER_PATTERNS.some(p => p.test(visionResult.sheet_number!));
+    return {
+      sheet_number: visionResult.sheet_number,
+      confidence: isValid ? 0.75 : 0.40,
+      method: 'vision',
+    };
+  }
+  
+  return { sheet_number: null, confidence: 0.20, method: 'vector' };
+}
+
+// ============================================================
+// CROP VALIDITY GUARD: Check if crop contains "SHEET" token
+// ============================================================
+async function validateCrop(
+  cropCanvas: HTMLCanvasElement,
+  meta: ExtractionMeta,
+  attempt: number
+): Promise<{ valid: boolean; reason: string }> {
+  // Simple check: use vision to see if "SHEET" token is found
+  const cropBase64 = canvasToBase64(cropCanvas);
+  
+  try {
+    const response = await supabase.functions.invoke('extract-titleblock', {
+      body: { 
+        image: cropBase64,
+        meta: {
+          ...meta,
+          phase: `crop_validity_check_${attempt}`,
+        }
+      },
+    });
+    
+    if (response.error) {
+      return { valid: false, reason: 'vision_error' };
+    }
+    
+    const data = response.data;
+    // If we got any sheet_number or sheet_title, the crop is likely valid
+    if (data?.sheet_number || data?.sheet_title) {
+      return { valid: true, reason: 'found_values' };
+    }
+    
+    return { valid: false, reason: 'no_sheet_token_found' };
+  } catch (error) {
+    return { valid: false, reason: 'validation_failed' };
   }
 }
 
@@ -747,7 +899,8 @@ function detectBoilerplateTitles(
 // ============================================================
 async function extractWithTemplate(
   canvas: HTMLCanvasElement,
-  template: TitleBlockTemplate
+  template: TitleBlockTemplate,
+  meta: ExtractionMeta
 ): Promise<{ sheet_number: string | null; sheet_title: string | null; success: boolean }> {
   const crops: string[] = [];
   
@@ -768,11 +921,16 @@ async function extractWithTemplate(
   }
   
   // Use vision on the specific crops
-  // For now, combine crops and send to extract-titleblock
   try {
     // Send the title crop first (larger context)
     const response = await supabase.functions.invoke('extract-titleblock', {
-      body: { image: crops[0] },
+      body: { 
+        image: crops[0],
+        meta: {
+          ...meta,
+          phase: 'template_extraction_title',
+        }
+      },
     });
     
     if (response.error) {
@@ -786,7 +944,13 @@ async function extractWithTemplate(
     // If we have a separate number crop and didn't get number, try that
     if (!number && crops.length > 1) {
       const numResponse = await supabase.functions.invoke('extract-titleblock', {
-        body: { image: crops[1] },
+        body: { 
+          image: crops[1],
+          meta: {
+            ...meta,
+            phase: 'template_extraction_number',
+          }
+        },
       });
       if (!numResponse.error) {
         number = numResponse.data?.sheet_number || null;
@@ -817,7 +981,7 @@ export async function runSheetIndexV2AndPersist(params: {
 }): Promise<SheetIndexRow[]> {
   const { projectId, jobId, filePath, useVisionFallback = true } = params;
   
-  console.log('[SheetIndex v2.3] Starting extraction:', { projectId, jobId });
+  console.log('[SheetIndex v2.4] Starting extraction:', { projectId, jobId });
   
   // Download PDF
   const { data: blob, error: downloadError } = await supabase.storage
@@ -848,7 +1012,7 @@ export async function runSheetIndexV2AndPersist(params: {
     viewportHeight: number;
   }> = [];
   
-  console.log(`[SheetIndex v2.3] Processing ${pdf.numPages} sheets...`);
+  console.log(`[SheetIndex v2.4] Processing ${pdf.numPages} sheets...`);
   
   for (let i = 1; i <= pdf.numPages; i++) {
     const sourceIndex = i - 1;
@@ -911,7 +1075,7 @@ export async function runSheetIndexV2AndPersist(params: {
     }))
   );
   
-  console.log(`[SheetIndex v2.3] Detected ${boilerplateIndices.size} sheets with boilerplate titles`);
+  console.log(`[SheetIndex v2.4] Detected ${boilerplateIndices.size} sheets with boilerplate titles`);
   
   // Group sheets by discipline for template calibration
   const disciplineGroups = new Map<string, typeof firstPassResults>();
@@ -944,7 +1108,7 @@ export async function runSheetIndexV2AndPersist(params: {
     templates.set(discipline, template);
   }
   
-  console.log(`[SheetIndex v2.3] Calibrated ${templates.size} templates`);
+  console.log(`[SheetIndex v2.4] Calibrated ${templates.size} templates`);
   
   // Second pass: process each sheet with template-based or vision extraction
   const finalResults: SheetIndexRow[] = [];
@@ -957,6 +1121,18 @@ export async function runSheetIndexV2AndPersist(params: {
     let visionSucceeded = false;
     let templateUsed = false;
     let templateSucceeded = false;
+    let crop_asset_path: string | null = null;
+    let crop_valid = false;
+    let crop_reason = '';
+    
+    // Build meta for edge function calls
+    const baseMeta: ExtractionMeta = {
+      jobId,
+      projectId,
+      sourceIndex,
+      expectedDiscipline: getDisciplinePrefix(result.sheet_number),
+      phase: 'sheet_index',
+    };
     
     const fallbackCheck = needsVisionFallback(result);
     const isBoilerplate = boilerplateIndices.has(sourceIndex);
@@ -979,7 +1155,7 @@ export async function runSheetIndexV2AndPersist(params: {
         template_discipline: discipline,
       };
       
-      const templateResult = await extractWithTemplate(canvas, template);
+      const templateResult = await extractWithTemplate(canvas, template, baseMeta);
       
       if (templateResult.success) {
         templateSucceeded = true;
@@ -1016,7 +1192,7 @@ export async function runSheetIndexV2AndPersist(params: {
       renderScale
     );
     
-    // Upload assets
+    // Upload assets including crop evidence
     let sheet_render_asset_path: string | null = null;
     let title_block_asset_path: string | null = null;
     
@@ -1047,6 +1223,7 @@ export async function runSheetIndexV2AndPersist(params: {
       
       if (!tbUploadError) {
         title_block_asset_path = titleBlockPath;
+        crop_asset_path = titleBlockPath; // Track the crop used
       }
     } catch (uploadError) {
       console.warn(`Failed to upload assets for sheet ${sourceIndex}:`, uploadError);
@@ -1060,14 +1237,55 @@ export async function runSheetIndexV2AndPersist(params: {
         vision_reason: isBoilerplate ? 'boilerplate_title' : fallbackCheck.reason,
       };
       
-      const titleBlockBase64 = canvasToBase64(titleBlockCanvas);
-      const visionResult = await extractWithVision(titleBlockBase64);
+      // Validate crop before using it (crop validity guard)
+      const cropValidation = await validateCrop(titleBlockCanvas, baseMeta, 1);
+      crop_valid = cropValidation.valid;
+      crop_reason = cropValidation.reason;
+      
+      let cropToUse = titleBlockCanvas;
+      
+      // Retry with bigger crop if first crop is invalid (up to 2 retries)
+      if (!crop_valid) {
+        console.log(`[SheetIndex v2.4] Crop invalid for sheet ${sourceIndex}: ${crop_reason}, trying bigger crop`);
+        
+        // Try a larger crop (30% x 25%)
+        const biggerCrop = cropTitleBlockDynamic(canvas, width, height, undefined, undefined, undefined, undefined);
+        const biggerValidation = await validateCrop(biggerCrop, baseMeta, 2);
+        
+        if (biggerValidation.valid) {
+          cropToUse = biggerCrop;
+          crop_valid = true;
+          crop_reason = 'retry_bigger_crop_succeeded';
+          
+          // Upload the new crop
+          try {
+            const retryCropBlob = await canvasToBlob(biggerCrop);
+            const retryCropPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/crop_retry.png`;
+            await supabase.storage.from('project-files').upload(retryCropPath, retryCropBlob, {
+              contentType: 'image/png',
+              upsert: true,
+            });
+            crop_asset_path = retryCropPath;
+          } catch (e) {
+            // Ignore upload error
+          }
+        } else {
+          crop_reason = `crop_invalid_after_retry: ${biggerValidation.reason}`;
+        }
+      }
+      
+      const titleBlockBase64 = canvasToBase64(cropToUse);
+      const visionResult = await extractWithVision(titleBlockBase64, {
+        ...baseMeta,
+        phase: 'vision_fallback',
+      });
       
       if (visionResult.sheet_number || visionResult.sheet_title) {
         const visionTitleValid = validateTitle(visionResult.sheet_title);
         
         if (visionResult.sheet_number && visionTitleValid.isValid) {
           visionSucceeded = true;
+          crop_valid = true; // Vision succeeded so crop was valid enough
           finalResult = {
             sheet_number: visionResult.sheet_number,
             sheet_title: visionResult.sheet_title,
@@ -1104,6 +1322,10 @@ export async function runSheetIndexV2AndPersist(params: {
           finalResult.extraction_source = 'unknown';
         }
       }
+    } else {
+      // No vision needed, mark crop as valid if we have one
+      crop_valid = true;
+      crop_reason = 'vector_text_sufficient';
     }
     
     // Calculate final confidence
@@ -1126,13 +1348,16 @@ export async function runSheetIndexV2AndPersist(params: {
       extraction_notes: finalResult.extraction_notes,
       sheet_render_asset_path,
       title_block_asset_path,
+      crop_asset_path,
+      crop_valid,
+      crop_reason,
     });
   }
   
   // Persist to database
   await persistSheetIndex(projectId, jobId, finalResults);
   
-  console.log(`[SheetIndex v2.3] Completed: ${finalResults.length} sheets processed`);
+  console.log(`[SheetIndex v2.4] Completed: ${finalResults.length} sheets processed`);
   
   return finalResults;
 }
@@ -1161,6 +1386,9 @@ async function persistSheetIndex(
       extraction_notes: row.extraction_notes || {},
       sheet_render_asset_path: row.sheet_render_asset_path,
       title_block_asset_path: row.title_block_asset_path,
+      crop_asset_path: row.crop_asset_path,
+      crop_valid: row.crop_valid ?? false,
+      crop_reason: row.crop_reason || '',
     }));
     
     const { error } = await supabase
@@ -1199,5 +1427,8 @@ export async function fetchSheetIndex(jobId: string): Promise<SheetIndexRow[]> {
     extraction_notes: row.extraction_notes || {},
     sheet_render_asset_path: row.sheet_render_asset_path,
     title_block_asset_path: row.title_block_asset_path,
+    crop_asset_path: row.crop_asset_path,
+    crop_valid: row.crop_valid ?? false,
+    crop_reason: row.crop_reason || '',
   }));
 }
