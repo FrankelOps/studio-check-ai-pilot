@@ -79,14 +79,15 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
     return 'text-red-500';
   };
 
-  const getExtractionIcon = (source: ExtractionSource | undefined) => {
+  const getExtractionSourceDisplay = (source: ExtractionSource) => {
     switch (source) {
       case 'vector_text':
         return (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger className="flex items-center gap-1">
                 <Cpu className="h-3 w-3 text-blue-500" />
+                <span className="text-xs text-blue-500">Text</span>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Extracted from vector text layer</p>
@@ -98,8 +99,9 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
         return (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger className="flex items-center gap-1">
                 <Eye className="h-3 w-3 text-purple-500" />
+                <span className="text-xs text-purple-500">Vision</span>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Extracted via AI vision (title block scan)</p>
@@ -111,8 +113,9 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
         return (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger className="flex items-center gap-1">
                 <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">?</span>
               </TooltipTrigger>
               <TooltipContent>
                 <p>Extraction source unknown</p>
@@ -197,7 +200,7 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
                       {Math.round(sheet.confidence * 100)}%
                     </TableCell>
                     <TableCell className="text-center">
-                      {getExtractionIcon(sheet.extraction_source)}
+                      {getExtractionSourceDisplay(sheet.extraction_source)}
                     </TableCell>
                   </TableRow>
                 ))}
