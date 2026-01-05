@@ -80,7 +80,7 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.85) return 'text-green-600';
-    if (confidence >= 0.6) return 'text-amber-600';
+    if (confidence >= 0.30) return 'text-amber-600';
     return 'text-red-500';
   };
 
