@@ -292,10 +292,12 @@ export type Database = {
       }
       analysis_sheet_index_v2: {
         Row: {
+          attempt_count: number | null
           confidence: number
           created_at: string
           crop_asset_path: string | null
           crop_reason: string | null
+          crop_strategy: string | null
           crop_valid: boolean | null
           discipline: string | null
           extraction_notes: Json
@@ -311,10 +313,12 @@ export type Database = {
           title_block_asset_path: string | null
         }
         Insert: {
+          attempt_count?: number | null
           confidence?: number
           created_at?: string
           crop_asset_path?: string | null
           crop_reason?: string | null
+          crop_strategy?: string | null
           crop_valid?: boolean | null
           discipline?: string | null
           extraction_notes?: Json
@@ -330,10 +334,12 @@ export type Database = {
           title_block_asset_path?: string | null
         }
         Update: {
+          attempt_count?: number | null
           confidence?: number
           created_at?: string
           crop_asset_path?: string | null
           crop_reason?: string | null
+          crop_strategy?: string | null
           crop_valid?: boolean | null
           discipline?: string | null
           extraction_notes?: Json

@@ -53,7 +53,12 @@ export type SheetKind = 'plan' | 'rcp' | 'schedule' | 'detail' | 'legend' | 'gen
 /**
  * Extraction source indicating how the sheet data was extracted
  */
-export type ExtractionSource = 'vector_text' | 'vision_titleblock' | 'template_fields' | 'unknown';
+export type ExtractionSource =
+  | 'vector_text'
+  | 'vision_titleblock'
+  | 'template_fields'
+  | 'unknown'
+  | 'fail_crop';
 
 /**
  * Bounding box in normalized coordinates (0-1)
@@ -97,10 +102,12 @@ export interface SheetIndexRow {
   extraction_notes?: Record<string, unknown>;
   sheet_render_asset_path?: string | null;
   title_block_asset_path?: string | null;
-  // Crop evidence fields (v2.4)
+  // Crop evidence fields (v2.4+)
   crop_asset_path?: string | null;
   crop_valid?: boolean;
   crop_reason?: string;
+  crop_strategy?: string | null;
+  attempt_count?: number | null;
 }
 
 /**

@@ -1,7 +1,7 @@
 // ============================================================
-// STUDIOCHECK SHEET INDEX v2.4
-// Template Calibration + Field-Anchored Extraction
-// + Crop Evidence + Sheet Number v1 + Crop Validity Guard
+// STUDIOCHECK SHEET INDEX v2.5
+// Deterministic Title Block Localization + Robust Crop Pipeline
+// (keeps Template Calibration + Field Extraction)
 // ============================================================
 
 import { supabase } from '@/integrations/supabase/client';
@@ -281,6 +281,10 @@ interface ExtractionMeta {
   sourceIndex: number;
   expectedDiscipline: string;
   phase: string;
+  renderW?: number;
+  renderH?: number;
+  cropStrategy?: string;
+  attempt?: number;
 }
 
 // ============================================================
@@ -560,38 +564,14 @@ async function extractSheetNumberV1(
 // CROP VALIDITY GUARD: Check if crop contains "SHEET" token
 // ============================================================
 async function validateCrop(
-  cropCanvas: HTMLCanvasElement,
+  _cropCanvas: HTMLCanvasElement,
   meta: ExtractionMeta,
   attempt: number
 ): Promise<{ valid: boolean; reason: string }> {
-  // Simple check: use vision to see if "SHEET" token is found
-  const cropBase64 = canvasToBase64(cropCanvas);
-  
-  try {
-    const response = await supabase.functions.invoke('extract-titleblock', {
-      body: { 
-        image: cropBase64,
-        meta: {
-          ...meta,
-          phase: `crop_validity_check_${attempt}`,
-        }
-      },
-    });
-    
-    if (response.error) {
-      return { valid: false, reason: 'vision_error' };
-    }
-    
-    const data = response.data;
-    // If we got any sheet_number or sheet_title, the crop is likely valid
-    if (data?.sheet_number || data?.sheet_title) {
-      return { valid: true, reason: 'found_values' };
-    }
-    
-    return { valid: false, reason: 'no_sheet_token_found' };
-  } catch (error) {
-    return { valid: false, reason: 'validation_failed' };
-  }
+  // v2.5: validation is deterministic when text layer exists; raster sheets will likely fail validation
+  // and proceed to larger safe crops.
+  if (!meta) return { valid: false, reason: 'no_meta' };
+  return { valid: false, reason: `deprecated_validateCrop_attempt_${attempt}` };
 }
 
 // ============================================================
@@ -719,21 +699,30 @@ async function loadOrCreateTemplate(
 // ============================================================
 async function renderSheetToCanvas(
   page: PDFPageProxy,
-  dpi: number = 150
-): Promise<{ canvas: HTMLCanvasElement; width: number; height: number }> {
-  const scale = dpi / 72;
-  const viewport = page.getViewport({ scale });
-  
+  targetWidthPx: number = 2000
+): Promise<{ canvas: HTMLCanvasElement; width: number; height: number; viewportWidth: number; viewportHeight: number; renderScale: number }> {
+  // v2.5: standardize render size to a fixed pixel width to avoid bbox math drift.
+  const viewport1 = page.getViewport({ scale: 1.0 });
+  const renderScale = targetWidthPx / viewport1.width;
+  const viewport = page.getViewport({ scale: renderScale });
+
   const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Failed to get canvas context');
-  
+
   await page.render({ canvasContext: ctx, viewport }).promise;
-  
-  return { canvas, width: viewport.width, height: viewport.height };
+
+  return {
+    canvas,
+    width: canvas.width,
+    height: canvas.height,
+    viewportWidth: viewport1.width,
+    viewportHeight: viewport1.height,
+    renderScale,
+  };
 }
 
 function cropWithBBox(
@@ -810,6 +799,299 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 // ============================================================
+// TITLE BLOCK LOCALIZATION + CROP PIPELINE (v2.5)
+// ============================================================
+
+type CropStrategy = 'vector_label' | 'fallback_br' | 'fallback_bottom_strip' | 'unknown';
+
+type PxBBox = { x: number; y: number; w: number; h: number };
+
+function clampPxBBox(b: PxBBox, renderW: number, renderH: number): PxBBox {
+  const x = Math.max(0, Math.min(renderW - 1, b.x));
+  const y = Math.max(0, Math.min(renderH - 1, b.y));
+  const w = Math.max(1, Math.min(renderW - x, b.w));
+  const h = Math.max(1, Math.min(renderH - y, b.h));
+  return { x, y, w, h };
+}
+
+function cropByPxBBox(canvas: HTMLCanvasElement, bbox: PxBBox): HTMLCanvasElement {
+  const b = clampPxBBox(bbox, canvas.width, canvas.height);
+  const cropCanvas = document.createElement('canvas');
+  cropCanvas.width = b.w;
+  cropCanvas.height = b.h;
+  const ctx = cropCanvas.getContext('2d');
+  if (!ctx) throw new Error('Failed to get crop canvas context');
+  ctx.drawImage(canvas, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+  return cropCanvas;
+}
+
+function toRenderPx(
+  item: { x: number; y: number },
+  viewportW: number,
+  viewportH: number,
+  renderScale: number
+): { x: number; y: number } {
+  // PDF text Y is bottom-origin; canvas Y is top-origin
+  const x = item.x * renderScale;
+  const y = (viewportH - item.y) * renderScale;
+  return { x, y };
+}
+
+function locateTitleBlockByVectorLabels(params: {
+  textItems: Array<{ text: string; x: number; y: number }>;
+  viewportW: number;
+  viewportH: number;
+  renderScale: number;
+  renderW: number;
+  renderH: number;
+}): { bbox: PxBBox | null; reason: string } {
+  const { textItems, viewportW, viewportH, renderScale, renderW, renderH } = params;
+
+  if (!textItems || textItems.length === 0) return { bbox: null, reason: 'no_text_items' };
+
+  const reNo = /\bSHEET\s*(NO|NUMBER)\b/i;
+  const reTitle = /\bSHEET\s*TITLE\b/i;
+  const reSheet = /\bSHEET\b/i;
+
+  const hits = textItems.filter(t => reNo.test(t.text) || reTitle.test(t.text) || reSheet.test(t.text));
+  if (hits.length === 0) return { bbox: null, reason: 'no_label_hits' };
+
+  // Use bottom-right-most hit (typical title block area)
+  const hitPx = hits
+    .map(h => ({ ...h, ...toRenderPx(h, viewportW, viewportH, renderScale) }))
+    .sort((a, b) => (b.x + b.y) - (a.x + a.y))[0];
+
+  // Expand around label positions (px), then clamp
+  const raw: PxBBox = {
+    x: Math.floor(hitPx.x - 200),
+    y: Math.floor(hitPx.y - 500),
+    w: Math.floor(1100),
+    h: Math.floor(800),
+  };
+
+  const bbox = clampPxBBox(raw, renderW, renderH);
+
+  // Guard: must be reasonably sized (>5% each dimension)
+  if (bbox.w < renderW * 0.05 || bbox.h < renderH * 0.05) {
+    return { bbox: null, reason: 'bbox_too_small' };
+  }
+
+  return { bbox, reason: 'vector_labels' };
+}
+
+function validateCropByVectorText(params: {
+  textItems: Array<{ text: string; x: number; y: number }>;
+  bbox: PxBBox;
+  viewportW: number;
+  viewportH: number;
+  renderScale: number;
+}): { valid: boolean; reason: string } {
+  const { textItems, bbox, viewportW, viewportH, renderScale } = params;
+  if (!textItems || textItems.length === 0) return { valid: false, reason: 'no_text_layer' };
+
+  const reSheetToken = /\bSHEET\b/i;
+  const inBoxTexts = textItems
+    .map(t => ({ ...t, ...toRenderPx(t, viewportW, viewportH, renderScale) }))
+    .filter(t => t.x >= bbox.x && t.x <= bbox.x + bbox.w && t.y >= bbox.y && t.y <= bbox.y + bbox.h)
+    .map(t => t.text);
+
+  if (inBoxTexts.some(t => reSheetToken.test(t))) return { valid: true, reason: 'found_sheet_token' };
+
+  for (const t of inBoxTexts) {
+    if (SHEET_NUMBER_PATTERNS.some(p => p.test(t))) return { valid: true, reason: 'found_sheet_number_pattern' };
+  }
+
+  return { valid: false, reason: 'no_sheet_token_or_number' };
+}
+
+async function uploadCropAttempt(params: {
+  projectId: string;
+  jobId: string;
+  sourceIndex: number;
+  attempt: number;
+  cropCanvas: HTMLCanvasElement;
+}): Promise<string | null> {
+  try {
+    const blob = await canvasToBlob(params.cropCanvas);
+    const path = `projects/${params.projectId}/jobs/${params.jobId}/sheets/${params.sourceIndex}/crop_attempt_${params.attempt}.png`;
+    const { error } = await supabase.storage.from('project-files').upload(path, blob, {
+      contentType: 'image/png',
+      upsert: true,
+    });
+    if (error) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+async function buildTitleBlockCropPipeline(params: {
+  canvas: HTMLCanvasElement;
+  textItems: Array<{ text: string; x: number; y: number }>;
+  viewportW: number;
+  viewportH: number;
+  renderScale: number;
+  projectId: string;
+  jobId: string;
+  sourceIndex: number;
+}): Promise<{
+  cropCanvas: HTMLCanvasElement;
+  crop_asset_path: string | null;
+  crop_valid: boolean;
+  crop_reason: string;
+  crop_strategy: CropStrategy;
+  attempt_count: number;
+  attempt_paths: string[];
+  locator_bbox: PxBBox | null;
+}> {
+  const renderW = params.canvas.width;
+  const renderH = params.canvas.height;
+
+  const attempt_paths: string[] = [];
+
+  // Attempt #1: vector label locator if possible; else bottom-right 50% x 50%
+  const locator = locateTitleBlockByVectorLabels({
+    textItems: params.textItems,
+    viewportW: params.viewportW,
+    viewportH: params.viewportH,
+    renderScale: params.renderScale,
+    renderW,
+    renderH,
+  });
+
+  const attempts: Array<{ strategy: CropStrategy; bbox: PxBBox; label: string }> = [];
+
+  if (locator.bbox) {
+    attempts.push({ strategy: 'vector_label', bbox: locator.bbox, label: 'vector_label' });
+  } else {
+    attempts.push({
+      strategy: 'fallback_br',
+      bbox: { x: Math.floor(renderW * 0.5), y: Math.floor(renderH * 0.5), w: Math.floor(renderW * 0.5), h: Math.floor(renderH * 0.5) },
+      label: `fallback_br_50 (reason=${locator.reason})`,
+    });
+  }
+
+  // Attempt #2: bottom-right 60% x 60%
+  attempts.push({
+    strategy: 'fallback_br',
+    bbox: { x: Math.floor(renderW * 0.4), y: Math.floor(renderH * 0.4), w: Math.floor(renderW * 0.6), h: Math.floor(renderH * 0.6) },
+    label: 'fallback_br_60',
+  });
+
+  // Attempt #3: bottom strip (100% width x bottom 35% height)
+  attempts.push({
+    strategy: 'fallback_bottom_strip',
+    bbox: { x: 0, y: Math.floor(renderH * 0.65), w: renderW, h: Math.floor(renderH * 0.35) },
+    label: 'fallback_bottom_strip_35',
+  });
+
+  let chosen: { cropCanvas: HTMLCanvasElement; strategy: CropStrategy; bbox: PxBBox; attempt: number } | null = null;
+  let crop_reason = '';
+
+  for (let i = 0; i < attempts.length; i++) {
+    const attemptNo = i + 1;
+    const a = attempts[i];
+    const cropCanvas = cropByPxBBox(params.canvas, a.bbox);
+
+    const uploadedPath = await uploadCropAttempt({
+      projectId: params.projectId,
+      jobId: params.jobId,
+      sourceIndex: params.sourceIndex,
+      attempt: attemptNo,
+      cropCanvas,
+    });
+    if (uploadedPath) attempt_paths.push(uploadedPath);
+
+    // v2.5 crop validity gate:
+    // - deterministic when vector text exists
+    // - cheap vision probe when raster/no text layer
+    const vectorValidation = validateCropByVectorText({
+      textItems: params.textItems,
+      bbox: a.bbox,
+      viewportW: params.viewportW,
+      viewportH: params.viewportH,
+      renderScale: params.renderScale,
+    });
+
+    let valid = vectorValidation.valid;
+    let reason = vectorValidation.reason;
+
+    if (!valid && vectorValidation.reason === 'no_text_layer') {
+      const probe = await extractWithVision(canvasToBase64(cropCanvas), {
+        jobId: params.jobId,
+        projectId: params.projectId,
+        sourceIndex: params.sourceIndex,
+        expectedDiscipline: 'UNKNOWN',
+        phase: 'crop_probe',
+        renderW,
+        renderH,
+        cropStrategy: a.strategy,
+        attempt: attemptNo,
+      });
+
+      if (probe.sheet_number || probe.sheet_title) {
+        valid = true;
+        reason = 'vision_probe_found_values';
+      } else {
+        reason = 'vision_probe_no_values';
+      }
+    }
+
+    if (valid) {
+      chosen = { cropCanvas, strategy: a.strategy, bbox: a.bbox, attempt: attemptNo };
+      crop_reason = `${a.label}: ${reason}`;
+      break;
+    } else {
+      crop_reason = `${a.label}: ${reason}`;
+    }
+  }
+
+  if (!chosen) {
+    // use the last attempt crop (safe large), but mark invalid
+    const last = attempts[attempts.length - 1];
+    chosen = { cropCanvas: cropByPxBBox(params.canvas, last.bbox), strategy: last.strategy, bbox: last.bbox, attempt: attempts.length };
+  }
+
+  const crop_asset_path = attempt_paths[chosen.attempt - 1] || null;
+
+  // Re-evaluate validity for the chosen crop (same rules)
+  const chosenVector = validateCropByVectorText({
+    textItems: params.textItems,
+    bbox: chosen.bbox,
+    viewportW: params.viewportW,
+    viewportH: params.viewportH,
+    renderScale: params.renderScale,
+  });
+
+  let crop_valid = chosenVector.valid;
+  if (!crop_valid && chosenVector.reason === 'no_text_layer') {
+    const probe = await extractWithVision(canvasToBase64(chosen.cropCanvas), {
+      jobId: params.jobId,
+      projectId: params.projectId,
+      sourceIndex: params.sourceIndex,
+      expectedDiscipline: 'UNKNOWN',
+      phase: 'crop_probe_final',
+      renderW,
+      renderH,
+      cropStrategy: chosen.strategy,
+      attempt: chosen.attempt,
+    });
+    crop_valid = Boolean(probe.sheet_number || probe.sheet_title);
+  }
+
+  return {
+    cropCanvas: chosen.cropCanvas,
+    crop_asset_path,
+    crop_valid,
+    crop_reason: crop_valid ? crop_reason : `invalid_crop: ${crop_reason}`,
+    crop_strategy: chosen.strategy,
+    attempt_count: chosen.attempt,
+    attempt_paths,
+    locator_bbox: locator.bbox,
+  };
+}
+
+// ============================================================
 // CONFIDENCE CALCULATION v2.3
 // ============================================================
 function calculateFinalConfidence(
@@ -819,8 +1101,13 @@ function calculateFinalConfidence(
   templateUsed: boolean,
   templateSucceeded: boolean
 ): number {
+  // Hard stop for crop localization failures
+  if (result.extraction_source === 'fail_crop') {
+    return Math.min(0.30, result.confidence || 0.30);
+  }
+
   let confidence = 0;
-  
+
   // Sheet number scoring
   if (result.sheet_number) {
     confidence += 0.45;
@@ -834,12 +1121,12 @@ function calculateFinalConfidence(
     // No sheet number = max 0.55
     return Math.min(result.confidence, 0.55);
   }
-  
+
   // Title scoring
   const titleValidation = validateTitle(result.sheet_title);
   if (result.sheet_title && titleValidation.isValid) {
     confidence += 0.35;
-    
+
     // Bonus for AEC keywords
     const upper = result.sheet_title.toUpperCase();
     if (AEC_TITLE_KEYWORDS.some(kw => upper.includes(kw))) {
@@ -852,7 +1139,7 @@ function calculateFinalConfidence(
     // No title = max 0.45
     return Math.min(0.45, confidence);
   }
-  
+
   // Template extraction bonus
   if (templateUsed && templateSucceeded) {
     confidence = Math.min(confidence, 0.97);
@@ -863,7 +1150,7 @@ function calculateFinalConfidence(
       confidence = Math.min(confidence, 0.40);
     }
   }
-  
+
   return Math.min(confidence, 0.97);
 }
 
@@ -997,9 +1284,9 @@ export async function runSheetIndexV2AndPersist(params: {
   const pdfjs = await getPdfJs();
   const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
   
-  const RENDER_DPI = 150;
-  const renderScale = RENDER_DPI / 72;
-  
+  // v2.5 standard rendering
+  const TARGET_RENDER_WIDTH_PX = 2000;
+
   // First pass: extract all sheets with heuristics
   const firstPassResults: Array<{
     sourceIndex: number;
@@ -1010,6 +1297,8 @@ export async function runSheetIndexV2AndPersist(params: {
     height: number;
     viewportWidth: number;
     viewportHeight: number;
+    renderScale: number;
+    textItems: Array<{ text: string; x: number; y: number }>;
   }> = [];
   
   console.log(`[SheetIndex v2.4] Processing ${pdf.numPages} sheets...`);
@@ -1018,29 +1307,42 @@ export async function runSheetIndexV2AndPersist(params: {
     const sourceIndex = i - 1;
     
     try {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 1.0 });
-      const textContent = await page.getTextContent();
-      
-      // Pass 1: Heuristic extraction
-      const result = extractFromTextItems(
-        textContent.items as TextItem[],
-        viewport.width,
-        viewport.height
-      );
-      
-      // Render sheet
-      const { canvas, width, height } = await renderSheetToCanvas(page, RENDER_DPI);
-      
-      firstPassResults.push({
-        sourceIndex,
-        result,
-        canvas,
-        width,
-        height,
-        viewportWidth: viewport.width,
-        viewportHeight: viewport.height,
-      });
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.0 });
+        const textContent = await page.getTextContent();
+
+        const rawTextItems = (textContent.items as TextItem[])
+          .map(it => ({
+            text: (it.str || '').trim(),
+            x: it.transform[4],
+            y: it.transform[5],
+          }))
+          .filter(it => it.text.length > 0);
+
+        // Pass 1: Heuristic extraction (vector text)
+        const result = extractFromTextItems(
+          textContent.items as TextItem[],
+          viewport.width,
+          viewport.height
+        );
+
+        // Standardized render
+        const { canvas, width, height, viewportWidth, viewportHeight, renderScale } = await renderSheetToCanvas(
+          page,
+          TARGET_RENDER_WIDTH_PX
+        );
+
+        firstPassResults.push({
+          sourceIndex,
+          result,
+          canvas,
+          width,
+          height,
+          viewportWidth,
+          viewportHeight,
+          renderScale,
+          textItems: rawTextItems,
+        });
     } catch (error) {
       console.warn(`Failed first pass for sheet ${sourceIndex}:`, error);
       const placeholderCanvas = document.createElement('canvas');
@@ -1063,6 +1365,8 @@ export async function runSheetIndexV2AndPersist(params: {
         height: 100,
         viewportWidth: 100,
         viewportHeight: 100,
+        renderScale: 1,
+        textItems: [],
       });
     }
   }
@@ -1114,8 +1418,8 @@ export async function runSheetIndexV2AndPersist(params: {
   const finalResults: SheetIndexRow[] = [];
   
   for (const pass1 of firstPassResults) {
-    const { sourceIndex, result, canvas, width, height, viewportWidth, viewportHeight } = pass1;
-    
+    const { sourceIndex, result, canvas, width, height, viewportWidth, viewportHeight, renderScale, textItems } = pass1;
+
     let finalResult = { ...result };
     let visionUsed = false;
     let visionSucceeded = false;
@@ -1124,7 +1428,8 @@ export async function runSheetIndexV2AndPersist(params: {
     let crop_asset_path: string | null = null;
     let crop_valid = false;
     let crop_reason = '';
-    
+    let crop_strategy: string | null = 'unknown';
+    let attempt_count: number | null = 0;
     // Build meta for edge function calls
     const baseMeta: ExtractionMeta = {
       jobId,
@@ -1132,6 +1437,8 @@ export async function runSheetIndexV2AndPersist(params: {
       sourceIndex,
       expectedDiscipline: getDisciplinePrefix(result.sheet_number),
       phase: 'sheet_index',
+      renderW: width,
+      renderH: height,
     };
     
     const fallbackCheck = needsVisionFallback(result);
@@ -1144,18 +1451,72 @@ export async function runSheetIndexV2AndPersist(params: {
       };
     }
     
-    // Try template-based extraction if available
+    // Try template-based extraction if available (v2.5: only if template intersects localized title block region)
     const discipline = getDisciplinePrefix(result.sheet_number);
     const template = templates.get(discipline);
-    
+
+    const locatorForTemplate = locateTitleBlockByVectorLabels({
+      textItems,
+      viewportW: viewportWidth,
+      viewportH: viewportHeight,
+      renderScale,
+      renderW: width,
+      renderH: height,
+    });
+
+    const titleBlockRegion: PxBBox = locatorForTemplate.bbox || {
+      x: Math.floor(width * 0.5),
+      y: Math.floor(height * 0.5),
+      w: Math.floor(width * 0.5),
+      h: Math.floor(height * 0.5),
+    };
+
+    const intersects = (a: PxBBox, b: PxBBox) =>
+      a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+    const pxFromNorm = (bbox: NormalizedBBox): PxBBox => ({
+      x: Math.floor(bbox.x * width),
+      y: Math.floor(bbox.y * height),
+      w: Math.floor(bbox.w * width),
+      h: Math.floor(bbox.h * height),
+    });
+
+    const templateOk = (tpl: TitleBlockTemplate) => {
+      const t = tpl.template;
+      const boxes = [t.bbox_sheet_title_value, t.bbox_sheet_number_value].filter(Boolean) as NormalizedBBox[];
+      if (boxes.length === 0) return { ok: false, reason: 'no_template_bboxes' };
+
+      for (const b of boxes) {
+        const px = pxFromNorm(b);
+        if (px.w < width * 0.05 || px.h < height * 0.05) return { ok: false, reason: 'template_bbox_too_small' };
+        if (!intersects(px, titleBlockRegion)) return { ok: false, reason: 'template_outside_titleblock_region' };
+      }
+
+      return { ok: true as const };
+    };
+
     if ((fallbackCheck.needed || isBoilerplate) && template && template.confidence >= 0.6) {
-      templateUsed = true;
-      finalResult.extraction_notes = {
-        ...finalResult.extraction_notes,
-        template_discipline: discipline,
-      };
-      
-      const templateResult = await extractWithTemplate(canvas, template, baseMeta);
+      const ok = templateOk(template);
+      if (!ok.ok) {
+        finalResult.extraction_notes = {
+          ...finalResult.extraction_notes,
+          template_rejected: true,
+          template_reject_reason: (ok as any).reason,
+          titleblock_locator_reason: locatorForTemplate.reason,
+        };
+      } else {
+        templateUsed = true;
+        finalResult.extraction_notes = {
+          ...finalResult.extraction_notes,
+          template_discipline: discipline,
+          titleblock_locator_reason: locatorForTemplate.reason,
+        };
+
+        const templateResult = await extractWithTemplate(canvas, template, {
+          ...baseMeta,
+          cropStrategy: 'template_fields',
+          attempt: 1,
+        });
       
       if (templateResult.success) {
         templateSucceeded = true;
@@ -1179,18 +1540,34 @@ export async function runSheetIndexV2AndPersist(params: {
           template_failed: true,
         };
       }
+      }
     }
     
-    // Crop title block with dynamic positioning
-    const titleBlockCanvas = cropTitleBlockDynamic(
+    // Title block localization + crop pipeline (deterministic when text layer exists)
+    const cropPipeline = await buildTitleBlockCropPipeline({
       canvas,
-      width,
-      height,
-      result.sheetNumberPosition,
-      viewportWidth,
-      viewportHeight,
-      renderScale
-    );
+      textItems,
+      viewportW: viewportWidth,
+      viewportH: viewportHeight,
+      renderScale,
+      projectId,
+      jobId,
+      sourceIndex,
+    });
+
+    const titleBlockCanvas = cropPipeline.cropCanvas;
+    crop_asset_path = cropPipeline.crop_asset_path;
+    crop_valid = cropPipeline.crop_valid;
+    crop_reason = cropPipeline.crop_reason;
+    crop_strategy = cropPipeline.crop_strategy;
+    attempt_count = cropPipeline.attempt_count;
+
+    // store attempt paths for debugging (without schema changes)
+    finalResult.extraction_notes = {
+      ...finalResult.extraction_notes,
+      crop_attempt_paths: cropPipeline.attempt_paths,
+      crop_locator: cropPipeline.locator_bbox,
+    };
     
     // Upload assets including crop evidence
     let sheet_render_asset_path: string | null = null;
@@ -1211,19 +1588,25 @@ export async function runSheetIndexV2AndPersist(params: {
         sheet_render_asset_path = renderPath;
       }
       
-      const titleBlockBlob = await canvasToBlob(titleBlockCanvas);
-      const titleBlockPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/titleblock.png`;
-      
-      const { error: tbUploadError } = await supabase.storage
-        .from('project-files')
-        .upload(titleBlockPath, titleBlockBlob, {
-          contentType: 'image/png',
-          upsert: true,
-        });
-      
-      if (!tbUploadError) {
-        title_block_asset_path = titleBlockPath;
-        crop_asset_path = titleBlockPath; // Track the crop used
+      // Save the final crop used for extraction as titleblock.png (even if invalid)
+      try {
+        const titleBlockBlob = await canvasToBlob(titleBlockCanvas);
+        const titleBlockPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/titleblock.png`;
+
+        const { error: tbUploadError } = await supabase.storage
+          .from('project-files')
+          .upload(titleBlockPath, titleBlockBlob, {
+            contentType: 'image/png',
+            upsert: true,
+          });
+
+        if (!tbUploadError) {
+          title_block_asset_path = titleBlockPath;
+          // Prefer the per-attempt crop path if we have one; else use titleblock.png
+          if (!crop_asset_path) crop_asset_path = titleBlockPath;
+        }
+      } catch (e) {
+        // ignore
       }
     } catch (uploadError) {
       console.warn(`Failed to upload assets for sheet ${sourceIndex}:`, uploadError);
@@ -1237,89 +1620,76 @@ export async function runSheetIndexV2AndPersist(params: {
         vision_reason: isBoilerplate ? 'boilerplate_title' : fallbackCheck.reason,
       };
       
-      // Validate crop before using it (crop validity guard)
-      const cropValidation = await validateCrop(titleBlockCanvas, baseMeta, 1);
-      crop_valid = cropValidation.valid;
-      crop_reason = cropValidation.reason;
-      
-      let cropToUse = titleBlockCanvas;
-      
-      // Retry with bigger crop if first crop is invalid (up to 2 retries)
+      // If crop localization failed, don't pretend: mark and skip vision extraction
       if (!crop_valid) {
-        console.log(`[SheetIndex v2.4] Crop invalid for sheet ${sourceIndex}: ${crop_reason}, trying bigger crop`);
-        
-        // Try a larger crop (30% x 25%)
-        const biggerCrop = cropTitleBlockDynamic(canvas, width, height, undefined, undefined, undefined, undefined);
-        const biggerValidation = await validateCrop(biggerCrop, baseMeta, 2);
-        
-        if (biggerValidation.valid) {
-          cropToUse = biggerCrop;
-          crop_valid = true;
-          crop_reason = 'retry_bigger_crop_succeeded';
-          
-          // Upload the new crop
-          try {
-            const retryCropBlob = await canvasToBlob(biggerCrop);
-            const retryCropPath = `projects/${projectId}/jobs/${jobId}/sheets/${sourceIndex}/crop_retry.png`;
-            await supabase.storage.from('project-files').upload(retryCropPath, retryCropBlob, {
-              contentType: 'image/png',
-              upsert: true,
-            });
-            crop_asset_path = retryCropPath;
-          } catch (e) {
-            // Ignore upload error
-          }
-        } else {
-          crop_reason = `crop_invalid_after_retry: ${biggerValidation.reason}`;
-        }
-      }
-      
-      const titleBlockBase64 = canvasToBase64(cropToUse);
-      const visionResult = await extractWithVision(titleBlockBase64, {
-        ...baseMeta,
-        phase: 'vision_fallback',
-      });
-      
-      if (visionResult.sheet_number || visionResult.sheet_title) {
-        const visionTitleValid = validateTitle(visionResult.sheet_title);
-        
-        if (visionResult.sheet_number && visionTitleValid.isValid) {
-          visionSucceeded = true;
-          crop_valid = true; // Vision succeeded so crop was valid enough
-          finalResult = {
-            sheet_number: visionResult.sheet_number,
-            sheet_title: visionResult.sheet_title,
-            discipline: inferDiscipline(visionResult.sheet_number, visionResult.sheet_title),
-            sheet_kind: inferSheetKind(visionResult.sheet_title),
-            confidence: 0,
-            extraction_source: 'vision_titleblock',
-            extraction_notes: {
+        finalResult = {
+          ...finalResult,
+          sheet_title: null,
+          extraction_source: 'fail_crop',
+          extraction_notes: {
+            ...finalResult.extraction_notes,
+            crop_failed: true,
+            crop_strategy,
+            attempt_count,
+            crop_reason,
+          },
+          confidence: Math.min(finalResult.confidence || 0.3, 0.3),
+        };
+      } else {
+        const titleBlockBase64 = canvasToBase64(titleBlockCanvas);
+        const visionResult = await extractWithVision(titleBlockBase64, {
+          ...baseMeta,
+          phase: 'vision_fallback',
+          cropStrategy: crop_strategy || undefined,
+          attempt: attempt_count || undefined,
+        });
+
+        if (visionResult.sheet_number || visionResult.sheet_title) {
+          const visionTitleValid = validateTitle(visionResult.sheet_title);
+
+          if (visionResult.sheet_number && visionTitleValid.isValid) {
+            visionSucceeded = true;
+            finalResult = {
+              sheet_number: visionResult.sheet_number,
+              sheet_title: visionResult.sheet_title,
+              discipline: inferDiscipline(visionResult.sheet_number, visionResult.sheet_title),
+              sheet_kind: inferSheetKind(visionResult.sheet_title),
+              confidence: 0,
+              extraction_source: 'vision_titleblock',
+              extraction_notes: {
+                ...finalResult.extraction_notes,
+                vision_used: true,
+                vision_succeeded: true,
+                crop_strategy,
+                attempt_count,
+              },
+            };
+          } else if (visionResult.sheet_number && !result.sheet_number) {
+            visionSucceeded = true;
+            finalResult.sheet_number = visionResult.sheet_number;
+            finalResult.discipline = inferDiscipline(visionResult.sheet_number, finalResult.sheet_title);
+            finalResult.extraction_source = 'vision_titleblock';
+            finalResult.extraction_notes = {
               ...finalResult.extraction_notes,
               vision_used: true,
-              vision_succeeded: true,
-            },
-          };
-        } else if (visionResult.sheet_number && !result.sheet_number) {
-          visionSucceeded = true;
-          finalResult.sheet_number = visionResult.sheet_number;
-          finalResult.discipline = inferDiscipline(visionResult.sheet_number, finalResult.sheet_title);
-          finalResult.extraction_source = 'vision_titleblock';
+              vision_partial: true,
+              crop_strategy,
+              attempt_count,
+            };
+          }
+        }
+
+        if (!visionSucceeded) {
           finalResult.extraction_notes = {
             ...finalResult.extraction_notes,
             vision_used: true,
-            vision_partial: true,
+            vision_failed: true,
+            crop_strategy,
+            attempt_count,
           };
-        }
-      }
-      
-      if (!visionSucceeded) {
-        finalResult.extraction_notes = {
-          ...finalResult.extraction_notes,
-          vision_used: true,
-          vision_failed: true,
-        };
-        if (!templateSucceeded) {
-          finalResult.extraction_source = 'unknown';
+          if (!templateSucceeded) {
+            finalResult.extraction_source = 'unknown';
+          }
         }
       }
     } else {
@@ -1351,6 +1721,8 @@ export async function runSheetIndexV2AndPersist(params: {
       crop_asset_path,
       crop_valid,
       crop_reason,
+      crop_strategy,
+      attempt_count,
     });
   }
   
@@ -1389,6 +1761,8 @@ async function persistSheetIndex(
       crop_asset_path: row.crop_asset_path,
       crop_valid: row.crop_valid ?? false,
       crop_reason: row.crop_reason || '',
+      crop_strategy: row.crop_strategy || 'unknown',
+      attempt_count: row.attempt_count ?? 0,
     }));
     
     const { error } = await supabase
@@ -1430,5 +1804,7 @@ export async function fetchSheetIndex(jobId: string): Promise<SheetIndexRow[]> {
     crop_asset_path: row.crop_asset_path,
     crop_valid: row.crop_valid ?? false,
     crop_reason: row.crop_reason || '',
+    crop_strategy: row.crop_strategy || 'unknown',
+    attempt_count: row.attempt_count ?? 0,
   }));
 }
