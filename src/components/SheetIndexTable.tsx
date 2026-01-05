@@ -128,6 +128,20 @@ export function SheetIndexTable({ sheets, loading }: SheetIndexTableProps) {
             </Tooltip>
           </TooltipProvider>
         );
+      case 'fail_crop':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger className="flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3 text-red-500" />
+                <span className="text-xs text-red-500">Crop</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Crop localization failed (stored for debugging)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
       default:
         return (
           <TooltipProvider>

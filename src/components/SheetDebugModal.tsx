@@ -71,6 +71,8 @@ export function SheetDebugModal({ sheet, open, onOpenChange }: SheetDebugModalPr
         return <Eye className="h-4 w-4 text-purple-500" />;
       case 'template_fields':
         return <LayoutTemplate className="h-4 w-4 text-green-500" />;
+      case 'fail_crop':
+        return <AlertTriangle className="h-4 w-4 text-red-500" />;
       default:
         return <HelpCircle className="h-4 w-4 text-muted-foreground" />;
     }
@@ -84,6 +86,8 @@ export function SheetDebugModal({ sheet, open, onOpenChange }: SheetDebugModalPr
 
   const cropValid = (sheet as any).crop_valid;
   const cropReason = (sheet as any).crop_reason || '';
+  const cropStrategy = (sheet as any).crop_strategy || '';
+  const attemptCount = (sheet as any).attempt_count ?? null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -182,13 +186,22 @@ export function SheetDebugModal({ sheet, open, onOpenChange }: SheetDebugModalPr
               {getSourceIcon(sheet.extraction_source)}
               <span className="text-sm">{sheet.extraction_source}</span>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Confidence:</span>
               <span className={`font-medium ${getConfidenceColor(sheet.confidence)}`}>
                 {Math.round(sheet.confidence * 100)}%
               </span>
             </div>
+
+            {(cropStrategy || attemptCount !== null) && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Crop:</span>
+                <span className="text-sm font-mono">
+                  {cropStrategy || '—'}{attemptCount !== null ? ` (x${attemptCount})` : ''}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Extraction Notes */}

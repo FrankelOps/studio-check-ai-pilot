@@ -17,19 +17,29 @@ serve(async (req) => {
 
   try {
     const { image, meta } = await req.json();
-    
+
     // Log metadata for debugging
     if (meta) {
-      console.log("[extract-titleblock] Request meta:", JSON.stringify({
-        jobId: meta.jobId || "unknown",
-        projectId: meta.projectId || "unknown",
-        sourceIndex: meta.sourceIndex ?? "unknown",
-        expectedDiscipline: meta.expectedDiscipline || "unknown",
-        phase: meta.phase || "unknown",
-        imageSize: image ? `${Math.round(image.length / 1024)}KB` : "no image"
-      }));
+      console.log(
+        "[extract-titleblock] Request meta:",
+        JSON.stringify({
+          jobId: meta.jobId || "unknown",
+          projectId: meta.projectId || "unknown",
+          sourceIndex: meta.sourceIndex ?? "unknown",
+          expectedDiscipline: meta.expectedDiscipline || "unknown",
+          phase: meta.phase || "unknown",
+          renderW: meta.renderW ?? null,
+          renderH: meta.renderH ?? null,
+          cropStrategy: meta.cropStrategy || null,
+          attempt: meta.attempt ?? null,
+          imageSize: image ? `${Math.round(image.length / 1024)}KB` : "no image",
+        }),
+      );
     } else {
-      console.log("[extract-titleblock] Request without meta, imageSize:", image ? `${Math.round(image.length / 1024)}KB` : "no image");
+      console.log(
+        "[extract-titleblock] Request without meta, imageSize:",
+        image ? `${Math.round(image.length / 1024)}KB` : "no image",
+      );
     }
     
     if (!image) {
@@ -127,8 +137,9 @@ Rules:
           JSON.stringify({
             sheet_number: parsed.sheet_number || null,
             sheet_title: parsed.sheet_title || null,
+            meta: meta || null,
           }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
     } catch (parseError) {
@@ -136,8 +147,8 @@ Rules:
     }
 
     return new Response(
-      JSON.stringify({ sheet_number: null, sheet_title: null }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ sheet_number: null, sheet_title: null, meta: meta || null }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
 
   } catch (error) {
