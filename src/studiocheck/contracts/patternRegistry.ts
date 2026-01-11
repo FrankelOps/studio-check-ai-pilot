@@ -20,14 +20,44 @@ export interface PatternDefinition {
  * DO NOT add new patterns without versioning the registry.
  */
 export const PatternRegistryV1: Record<string, PatternDefinition> = Object.freeze({
+  P1A: Object.freeze({
+    id: 'P1A',
+    name: 'ReferenceForward',
+    version: '1.0',
+    description: 'Forward Reference Integrity: Validates that all callouts on plan sheets resolve to existing target sheets AND the referenced detail/section/elevation exists on the target.',
+    required_inputs: ['sheet_index', 'analysis_references_v1', 'analysis_target_labels_v1'],
+    blocked_by_preflight_conditions: ['sheet_indexing_failed'],
+    phase_1_enabled: true,
+  }),
+
+  P1B: Object.freeze({
+    id: 'P1B',
+    name: 'ReferenceReverse',
+    version: '1.0',
+    description: 'Reverse Reference Coverage: Validates that all details/sections/elevations on target sheets are referenced at least once from plan sheets.',
+    required_inputs: ['sheet_index', 'analysis_references_v1', 'analysis_target_labels_v1'],
+    blocked_by_preflight_conditions: ['sheet_indexing_failed'],
+    phase_1_enabled: true,
+  }),
+
+  P1C: Object.freeze({
+    id: 'P1C',
+    name: 'DoorScheduleSync',
+    version: '1.0',
+    description: 'Bidirectional Door Schedule Sync: Validates door tags on plans exist in schedule AND schedule items exist on plans.',
+    required_inputs: ['sheet_index', 'analysis_door_tags_v1', 'analysis_door_schedule_items_v1'],
+    blocked_by_preflight_conditions: ['sheet_indexing_failed', 'schedule_extraction_failed'],
+    phase_1_enabled: true,
+  }),
+
   P1: Object.freeze({
     id: 'P1',
     name: 'PresenceWithEvidence',
     version: '1.0.0',
-    description: 'Detects callouts or references that point to missing sheets or missing details. Validates that referenced entities exist in the document set.',
+    description: '[DEPRECATED] Use P1A/P1B/P1C. Detects callouts or references that point to missing sheets or missing details.',
     required_inputs: ['sheet_index', 'extracted_callouts'],
     blocked_by_preflight_conditions: ['sheet_indexing_failed'],
-    phase_1_enabled: true,
+    phase_1_enabled: false,
   }),
 
   P2: Object.freeze({
