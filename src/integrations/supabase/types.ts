@@ -74,6 +74,171 @@ export type Database = {
           },
         ]
       }
+      analysis_door_schedule_items_v1: {
+        Row: {
+          confidence: number
+          created_at: string
+          door_id: string
+          evidence_asset_path: string
+          extraction_source: string
+          id: string
+          job_id: string
+          project_id: string
+          row_bbox: Json
+          schedule_sheet_number: string
+          snippet_text: string
+          source_index: number
+        }
+        Insert: {
+          confidence: number
+          created_at?: string
+          door_id: string
+          evidence_asset_path: string
+          extraction_source: string
+          id?: string
+          job_id: string
+          project_id: string
+          row_bbox: Json
+          schedule_sheet_number: string
+          snippet_text: string
+          source_index: number
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          door_id?: string
+          evidence_asset_path?: string
+          extraction_source?: string
+          id?: string
+          job_id?: string
+          project_id?: string
+          row_bbox?: Json
+          schedule_sheet_number?: string
+          snippet_text?: string
+          source_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_door_schedule_items_v1_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_door_schedule_items_v1_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analysis_door_tags_v1: {
+        Row: {
+          bbox: Json
+          confidence: number
+          created_at: string
+          door_id: string
+          evidence_asset_path: string
+          extraction_source: string
+          id: string
+          job_id: string
+          project_id: string
+          sheet_number: string
+          snippet_text: string
+          source_index: number
+        }
+        Insert: {
+          bbox: Json
+          confidence: number
+          created_at?: string
+          door_id: string
+          evidence_asset_path: string
+          extraction_source: string
+          id?: string
+          job_id: string
+          project_id: string
+          sheet_number: string
+          snippet_text: string
+          source_index: number
+        }
+        Update: {
+          bbox?: Json
+          confidence?: number
+          created_at?: string
+          door_id?: string
+          evidence_asset_path?: string
+          extraction_source?: string
+          id?: string
+          job_id?: string
+          project_id?: string
+          sheet_number?: string
+          snippet_text?: string
+          source_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_door_tags_v1_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_door_tags_v1_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analysis_issues_v1: {
+        Row: {
+          created_at: string
+          id: string
+          issue_json: Json
+          job_id: string
+          pattern_id: string
+          pattern_version: string
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          issue_json: Json
+          job_id: string
+          pattern_id: string
+          pattern_version: string
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          issue_json?: Json
+          job_id?: string
+          pattern_id?: string
+          pattern_version?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_issues_v1_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_issues_v1_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analysis_jobs: {
         Row: {
           error: string | null
@@ -248,6 +413,72 @@ export type Database = {
           },
         ]
       }
+      analysis_references_v1: {
+        Row: {
+          bbox: Json
+          calling_sheet_number: string
+          confidence: number
+          created_at: string
+          evidence_asset_path: string
+          extraction_source: string
+          id: string
+          job_id: string
+          project_id: string
+          ref_id: string
+          ref_type: string
+          snippet_text: string
+          source_index: number
+          target_sheet_number: string
+        }
+        Insert: {
+          bbox: Json
+          calling_sheet_number: string
+          confidence: number
+          created_at?: string
+          evidence_asset_path: string
+          extraction_source: string
+          id?: string
+          job_id: string
+          project_id: string
+          ref_id: string
+          ref_type: string
+          snippet_text: string
+          source_index: number
+          target_sheet_number: string
+        }
+        Update: {
+          bbox?: Json
+          calling_sheet_number?: string
+          confidence?: number
+          created_at?: string
+          evidence_asset_path?: string
+          extraction_source?: string
+          id?: string
+          job_id?: string
+          project_id?: string
+          ref_id?: string
+          ref_type?: string
+          snippet_text?: string
+          source_index?: number
+          target_sheet_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_references_v1_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_references_v1_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analysis_results: {
         Row: {
           analysis_data: Json
@@ -360,6 +591,69 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      analysis_target_labels_v1: {
+        Row: {
+          bbox: Json
+          confidence: number
+          created_at: string
+          evidence_asset_path: string
+          extraction_source: string
+          id: string
+          job_id: string
+          label_id: string
+          label_type: string
+          project_id: string
+          snippet_text: string
+          source_index: number
+          target_sheet_number: string
+        }
+        Insert: {
+          bbox: Json
+          confidence: number
+          created_at?: string
+          evidence_asset_path: string
+          extraction_source: string
+          id?: string
+          job_id: string
+          label_id: string
+          label_type: string
+          project_id: string
+          snippet_text: string
+          source_index: number
+          target_sheet_number: string
+        }
+        Update: {
+          bbox?: Json
+          confidence?: number
+          created_at?: string
+          evidence_asset_path?: string
+          extraction_source?: string
+          id?: string
+          job_id?: string
+          label_id?: string
+          label_type?: string
+          project_id?: string
+          snippet_text?: string
+          source_index?: number
+          target_sheet_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_target_labels_v1_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "analysis_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_target_labels_v1_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
